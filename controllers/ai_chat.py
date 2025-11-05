@@ -12,6 +12,7 @@ import re
 import time
 from typing import List, Tuple
 
+# Optional deps
 try:
     from pypdf import PdfReader
     _PDF = True
@@ -31,6 +32,7 @@ except Exception:
     _OPENAI = False
 
 
+# --------- Simple retrieval helpers ---------
 _STOPWORDS = set("""
 a an the and or of to in on for with by from as at is are was were be been being that this those these there here it its it's
 """.split())
@@ -43,6 +45,7 @@ def _tokenize(text: str) -> List[str]:
 
 
 def _walk_pdfs(folder: str, max_files: int = 40, max_pages: int = 40) -> List[Tuple[str, str]]:
+    """Return list of (path, text) for PDFs under folder with conservative limits."""
     out = []
     if not _PDF:
         return out
@@ -73,6 +76,7 @@ def _walk_pdfs(folder: str, max_files: int = 40, max_pages: int = 40) -> List[Tu
 
 
 def _best_chunks(docs: List[Tuple[str, str]], query: str, chunk_size: int = 1200, top_k: int = 3) -> List[str]:
+    """Split into fixed-size chunks; score by token overlap; return top_k chunks."""
     q_tokens = set(_tokenize(query))
     if not q_tokens:
         return []
@@ -91,6 +95,7 @@ def _best_chunks(docs: List[Tuple[str, str]], query: str, chunk_size: int = 1200
 
 
 def _question_allowed(question: str, rules_block: str) -> bool:
+    """Optional allowlist: one regex per line; if empty -> allowed."""
     if not rules_block:
         return True
     for line in (rules_block or "").splitlines():
@@ -107,14 +112,16 @@ def _question_allowed(question: str, rules_block: str) -> bool:
 
 class AIAssistantController(http.Controller):
 
-    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
+    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST'])
     def ai_chat_can_load(self):
+        """Public ping so the JS knows whether to mount the widget."""
         user = request.env.user
         show = (not user._is_public()) and user.has_group("website_ai_chat_min.group_ai_chat_user")
         return {"ok": True, "show": bool(show)}
 
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def ai_chat_send(self, message=None):
+        """Authenticated chat endpoint with folder-grounding and guardrails."""
         if not request.env.user.has_group("website_ai_chat_min.group_ai_chat_user"):
             raise AccessDenied(_("You do not have access to AI Chat."))
 
@@ -147,6 +154,7 @@ class AIAssistantController(http.Controller):
             return {"ok": False, "error": _("PDF parser (pypdf) not installed on server.")}
 
         t0 = time.time()
+        reply = ""
         try:
             docs = _walk_pdfs(docs_folder, max_files=40, max_pages=40)
             chunks = _best_chunks(docs, message, chunk_size=1200, top_k=3)
@@ -158,7 +166,6 @@ class AIAssistantController(http.Controller):
             context_block = "\n\n---\n".join(chunks) if chunks else "(no relevant context)"
             user_prompt = f"{guard}\n\nContext (excerpts from company PDFs):\n{context_block}\n\nQuestion: {message}\nIf the answer is not supported by the context, say: I don't know."
 
-            reply = ""
             if provider == "gemini":
                 if not _GEMINI:
                     return {"ok": False, "error": _("Gemini client not installed on server.")}
@@ -196,12 +203,12 @@ class AIAssistantController(http.Controller):
             else:
                 return {"ok": False, "error": _("Unsupported provider: %s") % provider}
 
-            if not reply:
-                reply = _("(No response)")
-            return {"ok": True, "reply": reply, "latency_ms": int((time.time() - t0) * 1000)}
-
         except (UserError, AccessError, ValidationError) as e:
             return {"ok": False, "error": tools.ustr(e)}
         except Exception as e:
             _logger.exception("AI RAG-lite error: %s", e)
             return {"ok": False, "error": _("AI provider or PDF processing error.")}
+        else:
+            if not reply:
+                reply = _("(No response)")
+            return {"ok": True, "reply": reply, "latency_ms": int((time.time() - t0) * 1000)}

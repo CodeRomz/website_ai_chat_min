@@ -83,7 +83,7 @@
   async function init() {
     try {
       const r = await rpc('/ai_chat/can_load', {});
-      if (!r || !r.ok || !r.show) return;
+      if (!r || !r.ok || !r.show) return; // not logged in or not in group
       mountUI();
     } catch (e) {
       // public user: ignore

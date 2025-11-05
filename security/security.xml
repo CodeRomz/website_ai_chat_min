@@ -4,6 +4,7 @@
     <field name="name">AI Chat User</field>
     <field name="category_id" ref="base.module_category_website"/>
   </record>
+
   <record id="group_ai_chat_admin" model="res.groups">
     <field name="name">AI Chat Admin</field>
     <field name="category_id" ref="base.module_category_website"/>

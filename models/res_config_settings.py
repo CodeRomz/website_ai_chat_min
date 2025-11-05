@@ -27,6 +27,7 @@ class ResConfigSettings(models.TransientModel):
         groups="website_ai_chat_min.group_ai_chat_admin",
         help="Example: gemini-2.0-flash-lite or gpt-4o-mini",
     )
+
     ai_docs_folder = fields.Char(
         string="PDFs Folder (Server Path)",
         config_parameter="website_ai_chat_min.docs_folder",
