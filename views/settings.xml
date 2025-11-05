@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="res_config_settings_view_form_ai_chat" model="ir.ui.view">
+    <field name="name">res.config.settings.view.form.ai.chat.min</field>
+    <field name="model">res.config.settings</field>
+    <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//div[hasclass('settings')]" position="inside">
+        <div class="app_settings_block" data-string="Website AI Chat" string="Website AI Chat" groups="website_ai_chat_min.group_ai_chat_admin">
+          <h2>Website AI Chat (Minimal)</h2>
+          <div class="row mt16 o_settings_container">
+            <div class="col-12 col-lg-6">
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_provider"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_provider"/>
+                  <div class="text-muted">Choose the AI backend.</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_api_key" password="True"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_api_key"/>
+                  <div class="text-muted">Stored in System Parameters.</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_model"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_model"/>
+                  <div class="text-muted">Model identifier (e.g., gemini-2.0-flash-lite).</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_docs_folder" placeholder="/opt/odoo/data/ai_pdfs"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_docs_folder"/>
+                  <div class="text-muted">Absolute server path with your PDFs.</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_system_instruction" placeholder="Answer only from the PDFs. If unsure, say I don't know."/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_system_instruction"/>
+                  <div class="text-muted">Guardrails to reduce hallucinations.</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_allowed_questions" placeholder="^what\b\n^how\b"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_allowed_questions"/>
+                  <div class="text-muted">Optional regex allowlist (one per line).</div>
+                </div>
+              </div>
+
+              <div class="o_setting_box">
+                <div class="o_setting_left">
+                  <field name="ai_context_only"/>
+                </div>
+                <div class="o_setting_right">
+                  <label for="ai_context_only"/>
+                  <div class="text-muted">Refuse if no relevant evidence is found.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </xpath>
+    </field>
+  </record>
+</odoo>
