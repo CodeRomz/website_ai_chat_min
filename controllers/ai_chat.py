@@ -112,7 +112,7 @@ def _question_allowed(question: str, rules_block: str) -> bool:
 
 class AIAssistantController(http.Controller):
 
-    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST'])
+    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
     def ai_chat_can_load(self):
         """Public ping so the JS knows whether to mount the widget."""
         user = request.env.user
@@ -122,7 +122,7 @@ class AIAssistantController(http.Controller):
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def ai_chat_send(self, message=None):
         """Authenticated chat endpoint with folder-grounding and guardrails."""
-        if not request.env.user.has_group("website_ai_chat_min.group_ai_chat_user"):
+        if not request.env.user.has_group("website_ai_chat_min.group_ai_chat_user"):  # nosec - group check
             raise AccessDenied(_("You do not have access to AI Chat."))
 
         if not message or not isinstance(message, str):
