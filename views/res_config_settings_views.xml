@@ -6,7 +6,7 @@
             <field name="model">res.config.settings</field>
             <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//settings" position="inside">
+                <xpath expr="//setting[@id='email_servers_setting']" position="after">
                     <setting id="website_ai_chat_min_settings"
                              string="Website AI Chat (Minimal)"
                              groups="website_ai_chat_min.group_ai_chat_admin">

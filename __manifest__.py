@@ -8,7 +8,7 @@
     "author": "CodeRomz / Your Company",
     "website": "https://example.com",
     "license": "LGPL-3",
-    "depends": ["base", "website", "base_setup"],
+    "depends": ["base", "website", "base_setup", "mail"],
     "data": [
         "security/security.xml",
         "security/ir.model.access.csv",
@@ -20,9 +20,9 @@
             "website_ai_chat_min/static/src/js/ai_chat.js",
         ],
     },
-    "external_dependencies": {
-        "python": ["pypdf", "openai", "google-generativeai"]
-    },
+    # "external_dependencies": {
+    #     "python": ["pypdf", "openai", "google-generativeai"]
+    # },
     "installable": True,
     "application": False,
 }
