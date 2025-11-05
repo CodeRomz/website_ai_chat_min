@@ -20,9 +20,9 @@
             "website_ai_chat_min/static/src/js/ai_chat.js",
         ],
     },
-    "external_dependencies": {
-        "python": ["pypdf", "openai", "google-generativeai"]
-    },
+    # "external_dependencies": {
+    #     "python": ["pypdf", "openai", "google-generativeai"]
+    # },
     "installable": True,
     "application": False,
 }
