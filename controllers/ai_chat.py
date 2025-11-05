@@ -1,214 +1,218 @@
 # -*- coding: utf-8 -*-
+import os
+import re
+from typing import List, Tuple
+
 from odoo import models, fields, api, tools, _
 from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessDenied, AccessError, CacheMiss, MissingError
+from odoo import http
+from odoo.http import request
 import logging
 _logger = logging.getLogger(__name__)
 
-from odoo import http
-from odoo.http import request
-
-import os
-import re
-import time
-from typing import List, Tuple
-
-# Optional deps
+# Optional libraries
 try:
     from pypdf import PdfReader
     _PDF = True
-except Exception:
+except Exception:  # pragma: no cover
+    PdfReader = None
     _PDF = False
 
 try:
-    import google.generativeai as genai
-    _GEMINI = True
-except Exception:
-    _GEMINI = False
-
-try:
-    import openai
+    # Newer OpenAI lib (client style) or fallback
+    import openai  # noqa: F401
     _OPENAI = True
-except Exception:
+except Exception:  # pragma: no cover
+    openai = None  # type: ignore
     _OPENAI = False
 
+try:
+    import google.generativeai as genai  # noqa: F401
+    _GEMINI = True
+except Exception:  # pragma: no cover
+    genai = None  # type: ignore
+    _GEMINI = False
 
-# --------- Simple retrieval helpers ---------
-_STOPWORDS = set("""
-a an the and or of to in on for with by from as at is are was were be been being that this those these there here it its it's
-""".split())
+
+def _normalize_words(text: str) -> List[str]:
+    try:
+        return re.findall(r"[A-Za-z0-9]+", (text or "").lower())
+    except Exception:
+        return []
 
 
-def _tokenize(text: str) -> List[str]:
-    text = (text or "").lower()
-    tokens = re.split(r"[^a-z0-9]+", text)
-    return [t for t in tokens if t and t not in _STOPWORDS]
+def _score_overlap(context_piece: str, query: str) -> int:
+    q = set(_normalize_words(query))
+    c = set(_normalize_words(context_piece))
+    return len(q.intersection(c))
 
 
 def _walk_pdfs(folder: str, max_files: int = 40, max_pages: int = 40) -> List[Tuple[str, str]]:
-    """Return list of (path, text) for PDFs under folder with conservative limits."""
-    out = []
+    docs = []
     if not _PDF:
-        return out
-    count = 0
-    for root, _dirs, files in os.walk(folder):
-        for name in files:
-            if not name.lower().endswith(".pdf"):
-                continue
-            if count >= max_files:
-                return out
-            path = os.path.join(root, name)
+        _logger.info("pypdf not installed; PDF context disabled.")
+        return docs
+    try:
+        files = []
+        for root, _dirs, filenames in os.walk(folder):
+            for fn in filenames:
+                if fn.lower().endswith(".pdf"):
+                    files.append(os.path.join(root, fn))
+            if len(files) >= max_files:
+                break
+        files = files[:max_files]
+        for path in files:
             try:
                 reader = PdfReader(path)
-                text = []
                 pages = min(len(reader.pages), max_pages)
                 for i in range(pages):
                     try:
-                        text.append(reader.pages[i].extract_text() or "")
-                    except Exception:
-                        continue
-                content = "\n".join(text).strip()
-                if content:
-                    out.append((path, content))
-                    count += 1
-            except Exception as e:
-                _logger.info("Skipped unreadable PDF %s: %s", path, e)
-    return out
+                        txt = reader.pages[i].extract_text() or ""
+                    except Exception:  # tolerate page extraction issues
+                        txt = ""
+                    if txt.strip():
+                        docs.append((path, txt.strip()))
+            except Exception:
+                _logger.info("Skipping unreadable PDF: %s", path)
+        return docs
+    except Exception as e:
+        _logger.exception("Error walking PDFs in %s: %s", folder, e)
+        return docs
 
 
-def _best_chunks(docs: List[Tuple[str, str]], query: str, chunk_size: int = 1200, top_k: int = 3) -> List[str]:
-    """Split into fixed-size chunks; score by token overlap; return top_k chunks."""
-    q_tokens = set(_tokenize(query))
-    if not q_tokens:
-        return []
+def _best_chunks(docs: List[Tuple[str, str]], query: str, k: int = 3) -> List[str]:
     scored = []
     for _path, text in docs:
-        for i in range(0, len(text), chunk_size):
-            chunk = text[i:i + chunk_size]
-            c_tokens = set(_tokenize(chunk))
-            if not c_tokens:
-                continue
-            score = len(q_tokens & c_tokens) / max(1, len(q_tokens))
-            if score > 0:
-                scored.append((score, chunk))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [c for _s, c in scored[:top_k]]
+        scored.append((_score_overlap(text, query), text))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [t[1] for t in scored[:k] if t[0] > 0]
 
 
 def _question_allowed(question: str, rules_block: str) -> bool:
-    """Optional allowlist: one regex per line; if empty -> allowed."""
-    if not rules_block:
-        return True
-    for line in (rules_block or "").splitlines():
-        pat = line.strip()
-        if not pat:
+    """Allow if rules empty; else require a match against any regex line."""
+    rules = (rules_block or "").splitlines()
+    active = []
+    for line in rules:
+        s = (line or "").strip()
+        if not s or s.startswith("#"):
             continue
         try:
-            if re.search(pat, question, flags=re.IGNORECASE):
-                return True
+            active.append(re.compile(s, re.IGNORECASE))
         except re.error:
+            _logger.info("Invalid regex skipped in allowed_questions: %s", s)
             continue
-    return False
+    if not active:
+        return True
+    return any(p.search(question or "") for p in active)
 
 
 class AIAssistantController(http.Controller):
 
-    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
-    def ai_chat_can_load(self):
-        """Public ping so the JS knows whether to mount the widget."""
-        user = request.env.user
-        show = (not user._is_public()) and user.has_group("website_ai_chat_min.group_ai_chat_user")
-        return {"ok": True, "show": bool(show)}
-
-    @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
-    def ai_chat_send(self, message=None):
-        """Authenticated chat endpoint with folder-grounding and guardrails."""
-        if not request.env.user.has_group("website_ai_chat_min.group_ai_chat_user"):  # nosec - group check
-            raise AccessDenied(_("You do not have access to AI Chat."))
-
-        if not message or not isinstance(message, str):
-            return {"ok": False, "error": _("Empty message.")}
-        if len(message) > 2000:
-            return {"ok": False, "error": _("Message too long (max 2000 chars).")}
-
-        ICP = request.env["ir.config_parameter"].sudo()
-        provider = ICP.get_param("website_ai_chat_min.provider", "gemini")
-        api_key = ICP.get_param("website_ai_chat_min.api_key") or ""
-        model = ICP.get_param("website_ai_chat_min.model", "gemini-2.0-flash-lite")
-
-        docs_folder_cfg = (ICP.get_param("website_ai_chat_min.docs_folder") or "").strip()
-        sys_instruction = (ICP.get_param("website_ai_chat_min.system_instruction") or "").strip()
-        allowed_rules = ICP.get_param("website_ai_chat_min.allowed_questions") or ""
-        context_only = tools.str2bool(ICP.get_param("website_ai_chat_min.context_only") or "True")
-
-        if not api_key:
-            return {"ok": False, "error": _("API key not configured. Ask an admin.")}
-
-        docs_folder = os.path.realpath(docs_folder_cfg)
-        if not docs_folder or not os.path.isabs(docs_folder) or not os.path.isdir(docs_folder):
-            return {"ok": False, "error": _("Invalid PDFs folder path.")}
-
-        if not _question_allowed(message, allowed_rules):
-            return {"ok": False, "error": _("Your question is not within the allowed scope.")}
-
-        if not _PDF:
-            return {"ok": False, "error": _("PDF parser (pypdf) not installed on server.")}
-
-        t0 = time.time()
-        reply = ""
+    @http.route("/ai_chat/can_load", type="json", auth="public", methods=["POST"], csrf=False)
+    def can_load(self):
         try:
-            docs = _walk_pdfs(docs_folder, max_files=40, max_pages=40)
-            chunks = _best_chunks(docs, message, chunk_size=1200, top_k=3)
+            user = request.env.user
+            show = bool(user and not user._is_public() and user.has_group("website_ai_chat_min.group_ai_chat_user"))
+            return {"show": show}
+        except Exception as e:
+            _logger.exception("can_load failed: %s", e)
+            return {"show": False}
 
-            if context_only and not chunks:
-                return {"ok": True, "reply": _("I don’t know based on the current documents."), "latency_ms": int((time.time() - t0) * 1000)}
+    @http.route("/ai_chat/send", type="json", auth="user", methods=["POST"], csrf=True)
+    def send(self, message=None):
+        try:
+            user = request.env.user
+            if not user.has_group("website_ai_chat_min.group_ai_chat_user"):
+                # Return JSON error instead of raising, to avoid generic network error in UI
+                return {"ok": False, "error": _("You do not have access to AI Chat.")}
 
-            guard = sys_instruction or "Answer only with facts from the provided context. If unsure, say 'I don't know'."
-            context_block = "\n\n---\n".join(chunks) if chunks else "(no relevant context)"
-            user_prompt = f"{guard}\n\nContext (excerpts from company PDFs):\n{context_block}\n\nQuestion: {message}\nIf the answer is not supported by the context, say: I don't know."
+            if not isinstance(message, str) or not message.strip():
+                return {"ok": False, "error": _("Please enter a question.")}
+            if len(message) > 2000:
+                return {"ok": False, "error": _("Message is too long (limit 2000 characters).")}
 
+            ICP = request.env["ir.config_parameter"].sudo()
+            provider = (ICP.get_param("website_ai_chat_min.provider", default="openai") or "openai").strip().lower()
+            api_key = ICP.get_param("website_ai_chat_min.api_key", default="") or ""
+            model_name = (ICP.get_param("website_ai_chat_min.model", default="gpt-4o-mini") or "gpt-4o-mini").strip()
+            folder = (ICP.get_param("website_ai_chat_min.docs_folder", default="") or "").strip()
+            sys_instruction = ICP.get_param("website_ai_chat_min.sys_instruction", default="") or ""
+            allowed_questions = ICP.get_param("website_ai_chat_min.allowed_questions", default="") or ""
+            context_only_str = ICP.get_param("website_ai_chat_min.context_only", default="True") or "True"
+            try:
+                context_only = tools.str2bool(context_only_str)
+            except Exception:
+                context_only = True
+
+            if not api_key:
+                return {"ok": False, "error": _("API key not configured. Ask an admin.")}
+
+            # Guardrails (use default if not provided)
+            guard = sys_instruction.strip() or _("Answer only with facts from the provided context. If unsure, say 'I don't know'.")
+
+            # Positive allow-list
+            if not _question_allowed(message, allowed_questions):
+                return {"ok": False, "error": _("Your question is not within the allowed scope.")}
+
+            # Build context from PDFs (if folder configured and valid absolute path)
+            context_chunks: List[str] = []
+            if folder:
+                real = os.path.realpath(folder)
+                if not os.path.isabs(real) or not os.path.isdir(real):
+                    return {"ok": False, "error": _("Invalid documents folder path.")}
+                docs = _walk_pdfs(real, max_files=40, max_pages=40)
+                if docs:
+                    context_chunks = _best_chunks(docs, message, k=3)
+
+            context_text = "\n\n".join(context_chunks).strip()
+            if context_only and not context_text:
+                return {"ok": False, "error": _("I don't know based on the current documents.")}
+
+            # Provider-specific call
+            reply = ""
             if provider == "gemini":
                 if not _GEMINI:
-                    return {"ok": False, "error": _("Gemini client not installed on server.")}
-                genai.configure(api_key=api_key)
-                model_client = genai.GenerativeModel(model)
-                prompt = f"[RULES]\n{guard}\n\n[CONTEXT]\n{context_block}\n\n[QUESTION]\n{message}\n\n[RESPONSE]"
-                resp = model_client.generate_content(prompt)
-                reply = getattr(resp, "text", "") or ""
-
-            elif provider == "openai":
+                    return {"ok": False, "error": _("Google Gemini client not installed on server.")}
+                try:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel(model_name)
+                    prompt = f"{guard}\n\n[CONTEXT]\n{context_text or '(none)'}\n\n[QUESTION]\n{message.strip()}"
+                    res = model.generate_content(prompt)
+                    reply = (getattr(res, "text", "") or "").strip()
+                except Exception as e:
+                    _logger.exception("Gemini error: %s", e)
+                    return {"ok": False, "error": _("AI provider error (Gemini).")}
+            else:
                 if not _OPENAI:
                     return {"ok": False, "error": _("OpenAI client not installed on server.")}
+                # OpenAI: try new client style, fallback to legacy
+                messages = [
+                    {"role": "system", "content": guard},
+                    {"role": "user", "content": f"Context:\n{context_text or '(none)'}\n\nQuestion: {message.strip()}"},
+                ]
                 try:
-                    client = openai.OpenAI(api_key=api_key)
-                    r = client.chat.completions.create(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": guard},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        temperature=0.0,
-                    )
-                    reply = r.choices[0].message.content.strip()
+                    # Try v1 client style if available
+                    from openai import OpenAI  # type: ignore
+                    client = OpenAI(api_key=api_key)
+                    comp = client.chat.completions.create(model=model_name, messages=messages)
+                    reply = (comp.choices[0].message.content or "").strip()
                 except Exception:
-                    openai.api_key = api_key
-                    r = openai.ChatCompletion.create(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": guard},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        temperature=0.0,
-                    )
-                    reply = r["choices"][0]["message"]["content"].strip()
-            else:
-                return {"ok": False, "error": _("Unsupported provider: %s") % provider}
+                    try:
+                        # Legacy style
+                        openai.api_key = api_key  # type: ignore[attr-defined]
+                        comp = openai.ChatCompletion.create(model=model_name, messages=messages)  # type: ignore[attr-defined]
+                        reply = (comp["choices"][0]["message"]["content"] or "").strip()
+                    except Exception as e2:
+                        _logger.exception("OpenAI error: %s", e2)
+                        return {"ok": False, "error": _("AI provider error (OpenAI).")}
 
-        except (UserError, AccessError, ValidationError) as e:
+            return {"ok": True, "reply": reply or _("(no reply)")}
+        except (UserError, ValidationError, RedirectWarning, AccessDenied, AccessError, MissingError) as e:
+            _logger.exception("Chat error: %s", e)
             return {"ok": False, "error": tools.ustr(e)}
         except Exception as e:
-            _logger.exception("AI RAG-lite error: %s", e)
-            return {"ok": False, "error": _("AI provider or PDF processing error.")}
-        else:
-            if not reply:
-                reply = _("(No response)")
-            return {"ok": True, "reply": reply, "latency_ms": int((time.time() - t0) * 1000)}
+            _logger.exception("Unexpected chat error: %s", e)
+            return {"ok": False, "error": _("Unexpected error. Please contact your administrator.")}
+        finally:
+            # Placeholder for any cleanup if needed in the future
+            pass
