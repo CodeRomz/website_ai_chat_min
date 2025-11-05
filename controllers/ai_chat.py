@@ -12,14 +12,12 @@ import re
 import time
 from typing import List, Tuple
 
-# PDF parsing
 try:
     from pypdf import PdfReader
     _PDF = True
 except Exception:
     _PDF = False
 
-# Providers (optional)
 try:
     import google.generativeai as genai
     _GEMINI = True
@@ -33,7 +31,6 @@ except Exception:
     _OPENAI = False
 
 
-# --------- RAG-lite helpers (keyword overlap, chunking) ---------
 _STOPWORDS = set("""
 a an the and or of to in on for with by from as at is are was were be been being that this those these there here it its it's
 """.split())
@@ -46,7 +43,6 @@ def _tokenize(text: str) -> List[str]:
 
 
 def _walk_pdfs(folder: str, max_files: int = 40, max_pages: int = 40) -> List[Tuple[str, str]]:
-    """Return list of (path, text) for PDFs under folder with conservative limits."""
     out = []
     if not _PDF:
         return out
@@ -77,11 +73,9 @@ def _walk_pdfs(folder: str, max_files: int = 40, max_pages: int = 40) -> List[Tu
 
 
 def _best_chunks(docs: List[Tuple[str, str]], query: str, chunk_size: int = 1200, top_k: int = 3) -> List[str]:
-    """Split text into fixed-size chunks; score by token overlap; return top_k chunks."""
     q_tokens = set(_tokenize(query))
     if not q_tokens:
         return []
-
     scored = []
     for _path, text in docs:
         for i in range(0, len(text), chunk_size):
@@ -89,17 +83,14 @@ def _best_chunks(docs: List[Tuple[str, str]], query: str, chunk_size: int = 1200
             c_tokens = set(_tokenize(chunk))
             if not c_tokens:
                 continue
-            # Jaccard-like simple score
             score = len(q_tokens & c_tokens) / max(1, len(q_tokens))
             if score > 0:
                 scored.append((score, chunk))
-
     scored.sort(key=lambda x: x[0], reverse=True)
     return [c for _s, c in scored[:top_k]]
 
 
 def _question_allowed(question: str, rules_block: str) -> bool:
-    """Optional allowlist: one regex per line; if empty -> allowed."""
     if not rules_block:
         return True
     for line in (rules_block or "").splitlines():
@@ -110,20 +101,20 @@ def _question_allowed(question: str, rules_block: str) -> bool:
             if re.search(pat, question, flags=re.IGNORECASE):
                 return True
         except re.error:
-            # ignore invalid regex
             continue
     return False
 
 
 class AIAssistantController(http.Controller):
 
+    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
+    def ai_chat_can_load(self):
+        user = request.env.user
+        show = (not user._is_public()) and user.has_group("website_ai_chat_min.group_ai_chat_user")
+        return {"ok": True, "show": bool(show)}
+
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def ai_chat_send(self, message=None):
-        """
-        Minimal chat endpoint with folder-grounding and guardrails.
-        Only for authenticated users in the AI Chat User group.
-        """
-        # Group check
         if not request.env.user.has_group("website_ai_chat_min.group_ai_chat_user"):
             raise AccessDenied(_("You do not have access to AI Chat."))
 
@@ -131,9 +122,6 @@ class AIAssistantController(http.Controller):
             return {"ok": False, "error": _("Empty message.")}
         if len(message) > 2000:
             return {"ok": False, "error": _("Message too long (max 2000 chars).")}
-
-        user = request.env.user
-        is_admin_cfg = user.has_group("website_ai_chat_min.group_ai_chat_admin")
 
         ICP = request.env["ir.config_parameter"].sudo()
         provider = ICP.get_param("website_ai_chat_min.provider", "gemini")
@@ -148,12 +136,10 @@ class AIAssistantController(http.Controller):
         if not api_key:
             return {"ok": False, "error": _("API key not configured. Ask an admin.")}
 
-        # Normalize & re-check path to avoid surprises (symlinks, ../)
         docs_folder = os.path.realpath(docs_folder_cfg)
         if not docs_folder or not os.path.isabs(docs_folder) or not os.path.isdir(docs_folder):
             return {"ok": False, "error": _("Invalid PDFs folder path.")}
 
-        # Allowed question check
         if not _question_allowed(message, allowed_rules):
             return {"ok": False, "error": _("Your question is not within the allowed scope.")}
 
@@ -162,27 +148,16 @@ class AIAssistantController(http.Controller):
 
         t0 = time.time()
         try:
-            # Load & retrieve (RAG-lite)
             docs = _walk_pdfs(docs_folder, max_files=40, max_pages=40)
             chunks = _best_chunks(docs, message, chunk_size=1200, top_k=3)
 
             if context_only and not chunks:
-                return {
-                    "ok": True,
-                    "reply": _("I don’t know based on the current documents."),
-                    "latency_ms": int((time.time() - t0) * 1000),
-                }
+                return {"ok": True, "reply": _("I don’t know based on the current documents."), "latency_ms": int((time.time() - t0) * 1000)}
 
             guard = sys_instruction or "Answer only with facts from the provided context. If unsure, say 'I don't know'."
             context_block = "\n\n---\n".join(chunks) if chunks else "(no relevant context)"
-            user_prompt = (
-                f"{guard}\n\n"
-                f"Context (excerpts from company PDFs):\n{context_block}\n\n"
-                f"Question: {message}\n"
-                f"If the answer is not supported by the context, say: I don't know."
-            )
+            user_prompt = f"{guard}\n\nContext (excerpts from company PDFs):\n{context_block}\n\nQuestion: {message}\nIf the answer is not supported by the context, say: I don't know."
 
-            # Provider calls
             reply = ""
             if provider == "gemini":
                 if not _GEMINI:
@@ -208,7 +183,6 @@ class AIAssistantController(http.Controller):
                     )
                     reply = r.choices[0].message.content.strip()
                 except Exception:
-                    # Legacy fallback (older openai package)
                     openai.api_key = api_key
                     r = openai.ChatCompletion.create(
                         model=model,

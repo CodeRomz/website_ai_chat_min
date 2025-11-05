@@ -2,7 +2,7 @@
 {
     "name": "Website AI Chat (Minimal)",
     "summary": "Authenticated website AI chat with admin-configured provider, PDFs folder & guardrails",
-    "version": "17.0.1.0.0",
+    "version": "17.0.2.0.0",
     "license": "LGPL-3",
     "category": "Website",
     "author": "Your Company",
@@ -10,10 +10,14 @@
     "data": [
         "security/security.xml",
         "security/ir.model.access.csv",
-        "views/assets.xml",
         "views/settings.xml",
     ],
-    "assets": {},
+    "assets": {
+        "web.assets_frontend": [
+            "website_ai_chat_min/static/src/css/ai_chat.css",
+            "website_ai_chat_min/static/src/js/ai_chat.js",
+        ],
+    },
     "installable": True,
     "application": False,
 }

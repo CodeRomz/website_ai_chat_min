@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-  <!-- Users allowed to use the website AI chat -->
   <record id="group_ai_chat_user" model="res.groups">
     <field name="name">AI Chat User</field>
     <field name="category_id" ref="base.module_category_website"/>
   </record>
-
-  <!-- Admins allowed to configure API key and RAG settings -->
   <record id="group_ai_chat_admin" model="res.groups">
     <field name="name">AI Chat Admin</field>
     <field name="category_id" ref="base.module_category_website"/>

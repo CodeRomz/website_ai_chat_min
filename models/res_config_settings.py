@@ -8,7 +8,6 @@ _logger = logging.getLogger(__name__)
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    # Provider & model
     ai_provider = fields.Selection(
         selection=[("gemini", "Gemini (Google)"), ("openai", "OpenAI (Optional)")],
         default="gemini",
@@ -28,8 +27,6 @@ class ResConfigSettings(models.TransientModel):
         groups="website_ai_chat_min.group_ai_chat_admin",
         help="Example: gemini-2.0-flash-lite or gpt-4o-mini",
     )
-
-    # RAG-lite controls
     ai_docs_folder = fields.Char(
         string="PDFs Folder (Server Path)",
         config_parameter="website_ai_chat_min.docs_folder",
