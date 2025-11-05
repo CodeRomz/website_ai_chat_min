@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
   <!-- Inject assets only for logged-in users who have AI Chat User group -->
-  <template id="assets_frontend_ai_chat_min" inherit_id="web.assets_frontend" name="AI Chat Minimal Assets">
+  <template id="assets_frontend_ai_chat_min"
+            inherit_id="web.assets_frontend"
+            name="AI Chat Minimal Assets">
     <xpath expr="." position="inside">
       <t t-if="not request.env.user._is_public() and request.env.user.has_group('website_ai_chat_min.group_ai_chat_user')">
         <link rel="stylesheet" type="text/css" href="/website_ai_chat_min/static/src/css/ai_chat.css"/>
+        <!-- note: NON self-closing script -->
         <script type="module" src="/website_ai_chat_min/static/src/js/ai_chat.js"></script>
       </t>
     </xpath>
