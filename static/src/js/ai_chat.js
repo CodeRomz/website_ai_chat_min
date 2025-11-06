@@ -132,4 +132,4 @@
 
   bodyReady(init);
 })();
-console.log("AI Chat JS (login-only) loaded");
+
