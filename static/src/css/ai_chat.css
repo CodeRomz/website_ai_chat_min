@@ -2,7 +2,8 @@
 
 /* ---------- Theme tokens (easy to tweak) ---------- */
 :root {
-  --ai-chat-accent: #4a6cf7;
+  --ai-chat-accent: #47a5ae;                 /* Firenor teal */
+  --ai-chat-accent-rgb: 71 165 174;          /* use with rgb(var(--...)/alpha) */
   --ai-chat-accent-contrast: #ffffff;
   --ai-chat-panel-bg: #ffffff;
   --ai-chat-text: #111827;
@@ -10,8 +11,8 @@
   --ai-chat-border: rgba(0, 0, 0, 0.08);
   --ai-chat-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
   --ai-chat-shadow-bubble: 0 6px 24px rgba(0, 0, 0, 0.15);
-  --ai-user-bubble: #eef2ff;   /* user message bg */
-  --ai-bot-bubble: #f6f7fb;    /* bot message bg */
+  --ai-user-bubble: #e9f6f7;                 /* user message bg (teal tint) */
+  --ai-bot-bubble: #f6f7fb;                  /* bot message bg */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,7 +22,7 @@
     --ai-chat-subtle: #a1a1aa;
     --ai-chat-border: rgba(255, 255, 255, 0.10);
     --ai-chat-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
-    --ai-user-bubble: rgba(74, 108, 247, 0.18);
+    --ai-user-bubble: rgb(var(--ai-chat-accent-rgb) / 0.18);
     --ai-bot-bubble: rgba(255, 255, 255, 0.06);
   }
 }
@@ -31,7 +32,7 @@
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 2147483640; /* above most site chrome */
+  z-index: 2147483640;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
@@ -53,6 +54,7 @@
   user-select: none;
 }
 
+/* Subtle hover/press */
 .ai-chat-min__bubble:hover { transform: translateY(-2px); }
 .ai-chat-min__bubble:active { transform: translateY(0) scale(0.98); }
 .ai-chat-min__bubble:focus-visible {
@@ -61,12 +63,10 @@
 }
 
 /* Subtle “alive” pulse for attention */
-.ai-chat-min__bubble {
-  animation: aiPulse 2.6s ease-in-out infinite;
-}
+.ai-chat-min__bubble { animation: aiPulse 2.6s ease-in-out infinite; }
 @keyframes aiPulse {
   0%, 100% { box-shadow: var(--ai-chat-shadow-bubble); }
-  50% { box-shadow: 0 0 0 10px rgba(74, 108, 247, 0.15); }
+  50% { box-shadow: 0 0 0 10px rgb(var(--ai-chat-accent-rgb) / 0.15); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-chat-min__bubble { animation: none; }
@@ -158,7 +158,7 @@
   color: var(--ai-chat-text);
 }
 
-/* Typing indicator (if you add .is-typing later) */
+/* Typing indicator */
 .ai-chat-min__msg.is-typing::after {
   content: "…";
   animation: aiDots 1.1s infinite steps(1, end);
@@ -203,7 +203,7 @@
   background: var(--ai-chat-accent);
   color: var(--ai-chat-accent-contrast);
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(74,108,247,0.25);
+  box-shadow: 0 4px 14px rgb(var(--ai-chat-accent-rgb) / 0.25);
   transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
 .ai-chat-min__send:hover { transform: translateY(-1px); }
