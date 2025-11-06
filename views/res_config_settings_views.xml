@@ -1,59 +1,67 @@
 <odoo>
-  <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
-    <field name="name">res.config.settings.view.form.ai.chat</field>
-    <field name="model">res.config.settings</field>
+    <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.ai.chat</field>
+        <field name="model">res.config.settings</field>
 
-    <!-- Keep this inherit for Website settings page -->
-    <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+        <!-- Keep this inherit for Website settings page -->
+        <field name="inherit_id" ref="website.res_config_settings_view_form"/>
 
-    <field name="arch" type="xml">
-      <!-- Append inside Website app (stable anchor in 17.0) -->
-      <xpath expr="//app[@name='website']" position="inside">
-        <block title="AI Chat (Minimal)" name="website_ai_settings"
-               groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+        <field name="arch" type="xml">
+            <!-- Append inside Website app (stable anchor in 17.0) -->
+            <xpath expr="//app[@name='website']" position="inside">
+                <block title="AI Chat (Minimal)" name="website_ai_settings"
+                       groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-          <setting string="AI Provider" help="Choose which LLM provider to call from the chat backend.">
-            <field name="ai_provider"/>
-          </setting>
+                    <setting string="AI Provider" help="Choose which LLM provider to call from the chat backend.">
+                        <field name="ai_provider"/>
+                    </setting>
 
-          <setting string="Model" help="Exact model name supported by the selected provider.">
-            <field name="ai_model"/>
-          </setting>
+                    <setting string="Model" help="Exact model name supported by the selected provider.">
+                        <field name="ai_model"/>
+                    </setting>
 
-          <setting string="API Key" help="Stored in system parameters; keep secret.">
-            <field name="ai_api_key" password="True"/>
-          </setting>
+                    <setting string="API Key" help="Stored in system parameters; keep secret.">
+                        <field name="ai_api_key" password="True"/>
+                    </setting>
 
-          <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
-            <field name="system_prompt"/>
-          </setting>
+                    <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
+                        <field name="system_prompt"/>
+                    </setting>
 
-          <setting string="Allowed Questions (regex)" help="Only allow prompts that match this case-insensitive regex.">
-            <field name="allowed_regex"/>
-          </setting>
+                    <setting string="Allowed Questions (regex)"
+                             help="Only allow prompts that match this case-insensitive regex.">
+                        <field name="allowed_regex"/>
+                    </setting>
 
-          <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
-            <field name="docs_folder"/>
-          </setting>
+                    <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
+                        <field name="docs_folder"/>
+                    </setting>
 
-          <setting string="Answer Only From Documents" help="If enabled, reply only when relevant document snippets are found.">
-            <field name="answer_only_from_docs"/>
-          </setting>
+                    <setting string="Answer Only From Documents"
+                             help="If enabled, reply only when relevant document snippets are found.">
+                        <field name="answer_only_from_docs"/>
+                    </setting>
 
-          <setting string="Privacy Policy URL" help="Optional link shown below the chat box.">
-            <field name="privacy_url"/>
-          </setting>
+                    <setting string="Public chat (no login)"
+                             help="Allow anonymous website visitors to see and use the AI chat.">
+                        <field name="public_enabled"/>
+                    </setting>
 
-          <setting string="Rate Limit: Max Requests" help="Max number of messages a user can send in the time window.">
-            <field name="rate_limit_max"/>
-          </setting>
+                    <setting string="Privacy Policy URL" help="Optional link shown below the chat box.">
+                        <field name="privacy_url"/>
+                    </setting>
 
-          <setting string="Rate Limit: Window (sec)" help="Duration of the throttle window in seconds.">
-            <field name="rate_limit_window"/>
-          </setting>
+                    <setting string="Rate Limit: Max Requests"
+                             help="Max number of messages a user can send in the time window.">
+                        <field name="rate_limit_max"/>
+                    </setting>
 
-        </block>
-      </xpath>
-    </field>
-  </record>
+                    <setting string="Rate Limit: Window (sec)" help="Duration of the throttle window in seconds.">
+                        <field name="rate_limit_window"/>
+                    </setting>
+
+                </block>
+            </xpath>
+        </field>
+    </record>
 </odoo>
