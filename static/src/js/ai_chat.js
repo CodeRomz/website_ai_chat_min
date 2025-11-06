@@ -1,5 +1,3 @@
-console.log('My custom JS file is loaded!');
-
 (() => {
   "use strict";
 
@@ -100,19 +98,29 @@ console.log('My custom JS file is loaded!');
       body.scrollTop = body.scrollHeight;
     }
 
+    // Check permission to load chat widget
     async function canLoad() {
-        await fetch("/ai_chat/can_load", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}"
-            })
-        .then(r => r.json())
-        .then(d => {
-            if (!d || d.show !== true) wrap.remove();
-            })
-        .catch(() => wrap.remove());
+      try {
+        const response = await fetch("/ai_chat/can_load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        if (!response.ok) {
+          console.error("AI Chat: can_load request failed with status", response.status, response.statusText);
+          return;
+        }
+        const data = await response.json();
+        if (data && data.show === false) {
+          console.info("AI Chat: hiding widget for unauthorized user.");
+          wrap.remove();
+        }
+        // If data.show is true or undefined, leave the widget as is.
+      } catch (error) {
+        console.error("AI Chat: can_load encountered an error:", error);
+        // Do not remove the widget on transient errors
+      }
     }
-
 
     async function sendMsg() {
       const q = input.value.trim();
@@ -138,6 +146,7 @@ console.log('My custom JS file is loaded!');
           appendMessage("bot", data && data.reply ? data.reply : "Error");
         }
       } catch (e) {
+        console.error("AI Chat: send request failed:", e);
         appendMessage("bot", "Network error.");
       }
     }
@@ -150,7 +159,9 @@ console.log('My custom JS file is loaded!');
       }
     });
 
+    // Mount the widget: use provided mount or fallback to body
     (mount || document.body).appendChild(wrap);
+    // After mounting, verify permission
     canLoad();
   }
 
@@ -163,3 +174,7 @@ console.log('My custom JS file is loaded!');
     }
   });
 })();
+
+
+
+console.log('AI Chat JS file is loaded!');
