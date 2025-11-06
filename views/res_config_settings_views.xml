@@ -9,7 +9,7 @@
     <field name="arch" type="xml">
       <!-- Append inside Website app (stable anchor in 17.0) -->
       <xpath expr="//app[@name='website']" position="inside">
-        <block string="AI Chat (Minimal)" name="website_ai_settings"
+        <block title="AI Chat (Minimal)" name="website_ai_settings"
                groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
           <setting string="AI Provider" help="Choose which LLM provider to call from the chat backend.">
