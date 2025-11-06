@@ -24,6 +24,11 @@
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
+                    <setting string="Public chat (no login)"
+                             help="Allow anonymous website visitors to see and use the AI chat.">
+                        <field name="public_enabled"/>
+                    </setting>
+
                     <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
                         <field name="system_prompt"/>
                     </setting>
@@ -33,18 +38,13 @@
                         <field name="allowed_regex"/>
                     </setting>
 
-                    <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
-                        <field name="docs_folder"/>
-                    </setting>
-
                     <setting string="Answer Only From Documents"
                              help="If enabled, reply only when relevant document snippets are found.">
                         <field name="answer_only_from_docs"/>
                     </setting>
 
-                    <setting string="Public chat (no login)"
-                             help="Allow anonymous website visitors to see and use the AI chat.">
-                        <field name="public_enabled"/>
+                    <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
+                        <field name="docs_folder"/>
                     </setting>
 
                     <setting string="Privacy Policy URL" help="Optional link shown below the chat box.">
