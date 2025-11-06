@@ -1,1 +1,2 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_res_config_settings_ai_chat_admin,res_config_settings_ai_chat_admin,base.model_res_config_settings,website_ai_chat_min.group_ai_chat_admin,1,1,1,0

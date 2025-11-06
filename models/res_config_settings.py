@@ -4,6 +4,7 @@ from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessD
 import logging
 _logger = logging.getLogger(__name__)
 
+
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
@@ -11,53 +12,43 @@ class ResConfigSettings(models.TransientModel):
         selection=[("openai", "OpenAI"), ("gemini", "Google Gemini")],
         string="AI Provider",
         default="openai",
-        config_parameter="website_ai_chat_min.provider",
+        config_parameter="website_ai_chat_min.ai_provider",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="Select the AI provider to use for answering questions."
     )
-
     ai_api_key = fields.Char(
         string="AI API Key",
-        config_parameter="website_ai_chat_min.api_key",
+        config_parameter="website_ai_chat_min.ai_api_key",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="API key for the selected AI provider."
     )
-
     ai_model = fields.Char(
-        string="Model Name",
-        default="gpt-4o-mini",
-        config_parameter="website_ai_chat_min.model",
+        string="AI Model",
+        default="gpt-3.5-turbo",
+        config_parameter="website_ai_chat_min.ai_model",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="Model identifier (e.g., 'gpt-4o-mini' or 'gemini-1.5-flash')."
+        help="OpenAI: e.g., gpt-3.5-turbo, gpt-4.  Gemini: e.g., gemini-pro",
     )
-
     docs_folder = fields.Char(
         string="Documents Folder (PDF)",
         config_parameter="website_ai_chat_min.docs_folder",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="Absolute path to a server folder containing PDF files used as context."
+        help="Absolute path to a folder containing PDF documents for grounding.",
     )
-
-    # CHANGED: Text -> Char (allowed in res.config.settings)
-    sys_instruction = fields.Char(
-        string="System Instructions",
+    sys_instruction = fields.Text(
+        string="System Instruction (Optional)",
         config_parameter="website_ai_chat_min.sys_instruction",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="Optional guardrails/instructions for the assistant."
+        help="An optional system prompt to guide the AI’s tone and constraints.",
     )
-
-    # CHANGED: Text -> Char (allowed in res.config.settings)
-    allowed_questions = fields.Char(
-        string="Allowed Questions (Regex per line)",
+    allowed_questions = fields.Text(
+        string="Allowed Questions (Regex, one per line)",
         config_parameter="website_ai_chat_min.allowed_questions",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="If provided, only questions matching at least one regex are allowed. Leave empty to allow all."
+        help="If set, only questions matching at least one regex are processed.",
     )
-
     context_only = fields.Boolean(
-        string="Answer Only From Context",
-        default=True,
+        string="Answer Only From Documents",
+        default=False,
         config_parameter="website_ai_chat_min.context_only",
         groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
-        help="When checked, the assistant will refuse to answer if no relevant PDF context is found."
+        help="If enabled, the assistant will answer only if relevant PDF context is found.",
     )

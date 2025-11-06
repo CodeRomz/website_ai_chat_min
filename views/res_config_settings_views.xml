@@ -1,47 +1,50 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <data>
-        <record id="res_config_settings_view_form_inherit_ai_chat_min" model="ir.ui.view">
-            <field name="name">res.config.settings.view.form.ai.chat.min</field>
-            <field name="model">res.config.settings</field>
-            <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
-            <field name="arch" type="xml">
-                <!-- Anchor AFTER a known setting from 'mail' (we depend on 'mail') -->
-                <xpath expr="//setting[@id='email_servers_setting']" position="after">
-                    <setting id="website_ai_chat_min_settings"
-                             string="Website AI Chat (Minimal)"
-                             groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+  <data>
+    <record id="res_config_settings_view_form_inherit_website_ai_chat_min" model="ir.ui.view">
+      <field name="name">res.config.settings.view.form.inherit.website.ai.chat.min</field>
+      <field name="model">res.config.settings</field>
+      <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+      <field name="arch" type="xml">
+        <xpath expr="//app[@name='website']" position="inside">
+          <block id="website_ai_chat_min_block" title="AI Chat (Minimal)" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <setting string="AI Provider &amp; Model">
+              <div class="row">
+                <label class="col-3 o_light_label" for="ai_provider"/>
+                <field name="ai_provider" class="col-9"/>
+              </div>
+              <div class="row mt-2">
+                <label class="col-3 o_light_label" for="ai_model"/>
+                <field name="ai_model" class="col-9" placeholder="gpt-3.5-turbo"/>
+              </div>
+            </setting>
 
-                        <div class="content-group">
-                            <label for="ai_provider" string="Ai Provider"/>
-                            <field name="ai_provider"/>
-                            <label for="ai_model" string="Ai Model"/>
-                            <field name="ai_model"/>
-                        </div>
-                        <div class="content-group">
-                            <label for="ai_api_key" string="API Key"/>
-                            <field name="ai_api_key" password="True"/>
-                            <label for="docs_folder" string="Documents Folder"/>
-                            <field name="docs_folder"/>
-                        </div>
-                        <div class="content-group">
-                            <label for="context_only" string="Content Security"/>
-                            <field name="context_only"/>
-                        </div>
+            <setting string="API Key &amp; Documents">
+              <div class="row">
+                <label class="col-3 o_light_label" for="ai_api_key"/>
+                <field name="ai_api_key" class="col-9" password="True" placeholder="sk-..."/>
+              </div>
+              <div class="row mt-2">
+                <label class="col-3 o_light_label" for="docs_folder"/>
+                <field name="docs_folder" class="col-9" placeholder="/opt/odoo/data/pdfs"/>
+              </div>
+            </setting>
 
-                        <div class="content-group">
-                            <!-- widget='text' to render Char as textarea -->
-                            <label for="sys_instruction" string="Ai Instruction"/>
-                            <field name="sys_instruction" widget="text"
-                                   placeholder="If unsure, say &#39;I don&#39;t know&#39;. Answer only from context."/>
-                            <label for="sys_instruction" string="Ai Allowed Questions"/>
-                            <field name="allowed_questions" widget="text"
-                                   placeholder="One regex per line. Leave empty to allow all."/>
-                        </div>
+            <setting string="System Instruction">
+              <field name="sys_instruction" widget="text" placeholder="Keep answers concise. If unsure, say you don’t know."/>
+            </setting>
 
-                    </setting>
-                </xpath>
-            </field>
-        </record>
-    </data>
+            <setting string="Allowed Questions (Regex)">
+              <field name="allowed_questions" widget="text" placeholder="^what\b
+^how\b"/>
+            </setting>
+
+            <setting string="Answer Only From Documents">
+              <field name="context_only"/>
+            </setting>
+          </block>
+        </xpath>
+      </field>
+    </record>
+  </data>
 </odoo>
