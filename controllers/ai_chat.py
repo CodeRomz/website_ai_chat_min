@@ -68,23 +68,17 @@ class WebsiteAIChatController(http.Controller):
 
     @http.route('/ai-chat', type='http', auth='user', website=True, methods=['GET'])
     def ai_chat_page(self, **kw):
-        """Standalone page for debugging or focused chat UX."""
         if not _user_can_use_chat(request.env):
-            # Hide details; consistent with AccessError semantics
             raise AccessError(_("You do not have access to AI Chat."))
-        # Provide i18n strings to JS via data-* (no OWL)
-        return request.render('website_ai_chat_min.ai_chat_page', {
-            'ai_i18n': {
-                'title': _("AI Chat"),
-                'send': _("Send"),
-                'placeholder': _("Type your question…"),
-                'close': _("Close"),
-                'gdpr_notice': _("No data is stored. Content may be sent to external AI."),
-            },
+
+        vals = {
             'privacy_url': request.env['ir.config_parameter'].sudo().get_param(
                 'website_ai_chat_min.privacy_url', default=''
             ),
-        })
+        }
+
+        # ✅ render the new template id
+        return request.render('website_ai_chat_min.ai_chat_page_main', vals)
 
     @http.route('/ai_chat/can_load', type='json', auth='public', csrf=False, methods=['POST'])
     def can_load(self):
