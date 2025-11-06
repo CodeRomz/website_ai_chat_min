@@ -82,13 +82,15 @@ class WebsiteAIChatController(http.Controller):
 
     @http.route('/ai_chat/can_load', type='json', auth='public', csrf=False, methods=['POST'])
     def can_load(self):
-        try:
-            show = _user_can_use_chat(request.env)
-            _logger.info("[website_ai_chat_min] can_load show=%s user=%s", show, request.env.user.login)
-            return {'show': show}
-        except Exception as e:
-            _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
-            return {'show': False}
+        # try:
+        #     show = _user_can_use_chat(request.env)
+        #     _logger.info("[website_ai_chat_min] can_load show=%s user=%s", show, request.env.user.login)
+        #     return {'show': show}
+        # except Exception as e:
+        #     _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
+        #     return {'show': False}
+
+        return {'show': True}
 
     @http.route('/ai_chat/send', type='json', auth='user', csrf=True, methods=['POST'])
     def send(self, question=None):
