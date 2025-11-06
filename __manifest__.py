@@ -14,7 +14,7 @@
         "security/security.xml",
         "security/ir.model.access.csv",
         "views/res_config_settings_views.xml",
-        # "views/ai_chat_templates.xml",
+        "views/ai_chat_templates.xml",
         'views/ai_chat_test.xml',
     ],
     "assets": {
