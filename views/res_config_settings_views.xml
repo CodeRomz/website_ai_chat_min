@@ -1,18 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Optional admin group for AI chat settings -->
-    <record id="group_ai_chat_admin" model="res.groups">
-        <field name="name">AI Chat Admin</field>
-        <field name="category_id" ref="base.module_category_website"/>
-        <field name="comment">Can configure Website AI Chat settings.</field>
-        <field name="implied_ids" eval="[(4, ref('base.group_system'))]"/>
-    </record>
-
     <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.ai.chat</field>
         <field name="model">res.config.settings</field>
+
+        <!-- Keep this inherit for Website settings page -->
         <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+
         <field name="arch" type="xml">
+            <!-- Append inside Website app (stable anchor in 17.0) -->
             <xpath expr="//app[@name='website']" position="inside">
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
@@ -29,7 +24,8 @@
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="Public chat (no login)" help="Allow anonymous visitors to see the chat bubble.">
+                    <setting string="Public chat (no login)"
+                             help="Allow anonymous website visitors to see and use the AI chat.">
                         <field name="public_enabled"/>
                     </setting>
 
@@ -43,7 +39,7 @@
                     </setting>
 
                     <setting string="Answer Only From Documents"
-                             help="If enabled, reply only when relevant PDF snippets are found.">
+                             help="If enabled, reply only when relevant document snippets are found.">
                         <field name="answer_only_from_docs"/>
                     </setting>
 
@@ -56,7 +52,7 @@
                     </setting>
 
                     <setting string="Rate Limit: Max Requests"
-                             help="Max number of messages in the throttle window.">
+                             help="Max number of messages a user can send in the time window.">
                         <field name="rate_limit_max"/>
                     </setting>
 
