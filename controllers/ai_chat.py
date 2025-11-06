@@ -70,7 +70,7 @@ class WebsiteAIChatController(http.Controller):
     def ai_chat_page(self, **kw):
         """Standalone page for debugging or focused chat UX."""
         if not _user_can_use_chat(request.env):
-            # Avoid leaking details; consistent with AccessError semantics
+            # Hide details; consistent with AccessError semantics
             raise AccessError(_("You do not have access to AI Chat."))
         # Provide i18n strings to JS via data-* (no OWL)
         return request.render('website_ai_chat_min.ai_chat_page', {
@@ -119,11 +119,8 @@ class WebsiteAIChatController(http.Controller):
         uid = request.env.uid
         login = request.env.user.login or 'n/a'
 
-        # START structured log (GDPR-safe; do not log raw question)
-        _logger.info(
-            "[website_ai_chat_min] /ai_chat/send called uid=%s login=%s len=%s",
-            uid, login, len(q)
-        )
+        # Structured log (GDPR-safe; do not log raw question)
+        _logger.info("[website_ai_chat_min] /ai_chat/send uid=%s login=%s len=%s", uid, login, len(q))
 
         try:
             provider = ICP.get_param('website_ai_chat_min.ai_provider', default='openai')
@@ -185,10 +182,10 @@ class WebsiteAIChatController(http.Controller):
                           uid, login, tools.ustr(e), exc_info=True)
             return {'ok': False, 'reply': _("Unexpected error: %s") % tools.ustr(e)}
         else:
-            # Useful hook for future metrics
+            # Hook for future metrics
             pass
         finally:
-            # Explicit for readability; nothing to cleanup at the moment.
+            # Explicit for readability
             pass
 
 
