@@ -1,0 +1,78 @@
+<!-- views/ai_chat_test.xml -->
+<odoo>
+  <template id="ai_chat_test_page" name="AI Chat Test Page" inherit_id="website.layout">
+    <xpath expr="//main" position="inside">
+      <section id="ai-chat-test" class="container my-5">
+        <h2>AI Chat Test</h2>
+        <p class="text-muted">
+          <t t-esc="user_name"/> — only logged-in users can access this page.
+        </p>
+
+        <div class="card p-3">
+          <div class="mb-2">
+            <label for="msg" class="form-label">Message</label>
+            <input id="msg" class="form-control" placeholder="Type a question..." />
+          </div>
+          <div class="mb-3">
+            <button id="sendBtn" class="btn btn-primary">Send</button>
+          </div>
+          <pre id="out" style="background:#111;color:#eee;padding:10px;min-height:140px;white-space:pre-wrap;"></pre>
+        </div>
+      </section>
+
+      <!-- Minimal inline JS just for the test page -->
+      <script type="text/javascript">
+      (function () {
+        function append(out, txt) {
+          out.textContent += txt + "\\n";
+          out.scrollTop = out.scrollHeight;
+        }
+
+        const input = document.getElementById("msg");
+        const btn = document.getElementById("sendBtn");
+        const out = document.getElementById("out");
+
+        btn.addEventListener("click", async function () {
+          const content = (input.value || "").trim();
+          if (!content) { input.focus(); return; }
+
+          append(out, "> " + content);
+          input.value = "";
+          btn.disabled = true;
+
+          try {
+            const res = await fetch("/ai_chat_test/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: content })
+            });
+
+            // Odoo type='json' often wraps result in JSON-RPC
+            const data = await res.json();
+            const payload = (data && typeof data === "object" && "result" in data) ? data.result : data;
+
+            if (payload && payload.ok) {
+              append(out, (payload.reply || "").toString());
+            } else if (payload && payload.error) {
+              append(out, "ERR: " + payload.error);
+            } else {
+              append(out, "ERR: Unexpected response.");
+            }
+          } catch (e) {
+            append(out, "ERR: " + e);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            btn.click();
+          }
+        });
+      })();
+      </script>
+    </xpath>
+  </template>
+</odoo>

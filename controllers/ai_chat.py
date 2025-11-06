@@ -243,3 +243,99 @@ def _call_gemini(api_key, model, system_prompt, user_text):
     content = f"{sys}\n\nUser: {user_text}".strip()
     r = genai.GenerativeModel(model_name).generate_content([content])
     return (getattr(r, "text", None) or "").strip()
+
+
+
+class WebsiteAIChatTestController(http.Controller):
+    """Minimal test page + JSON endpoint to verify FE <-> BE connectivity and (optional) AI call."""
+
+    @http.route('/ai-chat-test', type='http', auth='user', website=True, methods=['GET'])
+    def ai_chat_test_page(self, **kw):
+        """Render a simple page with an input and a Send button."""
+        try:
+            values = {
+                "user_name": request.env.user.name,
+            }
+        except Exception as e:
+            _logger.exception("Failed to prepare AI Chat Test page context")
+            # Render a very small error page instead of bubbling a 500
+            return request.make_response(
+                "<h3>AI Chat Test</h3><p>Server error: %s</p>" % tools.html_escape(str(e)),
+                headers=[("Content-Type", "text/html; charset=utf-8")],
+            )
+        else:
+            return request.render('website_ai_chat_min.ai_chat_test_page', values)
+        finally:
+            pass  # reserved for future cleanup
+
+    @http.route('/ai_chat_test/send', type='json', auth='user', methods=['POST'])
+    def ai_chat_test_send(self, message=None):
+        """Accept a message, optionally hit AI provider, return JSON. Works even without provider (Echo)."""
+        # Basic input normalization
+        msg = (message or "").strip()
+        _logger.info("AI-TEST recv user=%s len=%s", request.env.user.id, len(msg))
+
+        try:
+            # Pull config (if present)
+            icp = request.env['ir.config_parameter'].sudo()
+            provider = (icp.get_param('website_ai_chat_min.ai_provider') or '').lower()
+            api_key = icp.get_param('website_ai_chat_min.ai_api_key')
+            model = icp.get_param('website_ai_chat_min.ai_model') or 'gpt-3.5-turbo'
+            system_prompt = icp.get_param('website_ai_chat_min.system_prompt') or ''
+
+            # No input? Short-circuit
+            if not msg:
+                return {"ok": True, "reply": _("(Nothing to send) Please type a message.")}
+
+            reply = None
+
+            # --- Optional OpenAI ---
+            if provider == 'openai' and api_key:
+                try:
+                    import openai  # type: ignore
+                    openai.api_key = api_key
+                    messages = []
+                    if system_prompt:
+                        messages.append({"role": "system", "content": system_prompt})
+                    messages.append({"role": "user", "content": msg})
+                    resp = openai.ChatCompletion.create(
+                        model=model,
+                        messages=messages,
+                        timeout=15,
+                    )
+                    reply = (resp.choices[0].message['content'] or '').strip()
+                except Exception as oe:
+                    _logger.exception("OpenAI call failed")
+                    reply = _("(OpenAI error) %s") % str(oe)
+
+            # --- Optional Gemini ---
+            elif provider in ('gemini', 'google') and api_key:
+                try:
+                    import google.generativeai as genai  # type: ignore
+                    genai.configure(api_key=api_key)
+                    model_name = model or "gemini-1.5-flash"
+                    gen_model = genai.GenerativeModel(model_name)
+                    prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
+                    r = gen_model.generate_content(prompt, request_options={"timeout": 15})
+                    reply = (getattr(r, "text", None) or "").strip()
+                except Exception as ge:
+                    _logger.exception("Gemini call failed")
+                    reply = _("(Gemini error) %s") % str(ge)
+
+            # --- Fallback: Echo ---
+            else:
+                reply = _("Echo: %s") % msg
+
+            if not reply:
+                reply = _("(No reply)")
+
+            return {"ok": True, "reply": reply}
+
+        except Exception as e:
+            _logger.exception("ai_chat_test_send failed")
+            # Keep user-facing errors generic; log details server-side
+            return {"ok": False, "error": _("Server error. Please try again."), "detail": tools.html_escape(str(e))}
+        else:
+            pass
+        finally:
+            pass
