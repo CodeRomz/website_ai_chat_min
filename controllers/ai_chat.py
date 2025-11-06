@@ -316,7 +316,8 @@ class WebsiteAIChatTestController(http.Controller):
                     genai.configure(api_key=api_key)
                     model_name = model or "gemini-1.5-flash"
                     gen_model = genai.GenerativeModel(model_name)
-                    prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
+                    # prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
+                    prompt = msg
                     r = gen_model.generate_content(prompt, request_options={"timeout": 15})
                     reply = (getattr(r, "text", None) or "").strip()
                 except Exception as ge:
