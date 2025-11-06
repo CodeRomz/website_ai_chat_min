@@ -387,3 +387,6 @@ class WebsiteAIChatController(http.Controller):
         finally:
             # Explicit for readability
             pass
+
+
+# pip install openai google-generativeai pypdf
