@@ -1,7 +1,7 @@
 {
     "name": "Website AI Chat (Minimal)",
     "summary": "Minimal AI chat for Website with OpenAI/Gemini, PDF grounding, GDPR-friendly (Odoo 17 CE).",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.1.0",
     "category": "Website",
     "license": "LGPL-3",
     "author": "Your Company",
