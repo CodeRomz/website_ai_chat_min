@@ -1,6 +1,5 @@
 <odoo>
   <data>
-
     <!-- New stand-alone page -->
     <template id="ai_chat_page_main" name="AI Chat Page (Standalone)">
       <t t-call="website.layout">
