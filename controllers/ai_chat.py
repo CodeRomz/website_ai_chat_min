@@ -7,6 +7,8 @@ _logger = logging.getLogger(__name__)
 from odoo import http
 from odoo.http import request
 
+import json
+
 import time
 import re
 import os
@@ -271,10 +273,16 @@ class WebsiteAIChatTestController(http.Controller):
     @http.route('/ai_chat_test/send', type='json', auth='user', methods=['POST'])
     def ai_chat_test_send(self, message=None, **kw):
         _logger.info("AI-TEST recv user=%s", request.env.user.id)
-
         try:
-            # 1) Normalize input for both JSON-RPC and plain JSON
-            payload = request.jsonrequest or {}
+            # 1) Normalize payload for both JSON-RPC and plain JSON
+            payload = {}
+            try:
+                raw = request.httprequest.get_data(cache=False, as_text=True)
+                if raw:
+                    payload = json.loads(raw)
+            except Exception:
+                payload = {}
+
             if message is None:
                 if isinstance(payload, dict) and 'params' in payload:
                     message = (payload.get('params') or {}).get('message')
@@ -284,11 +292,10 @@ class WebsiteAIChatTestController(http.Controller):
             msg = (message or "").strip()
             _logger.info("User Message (norm): %r", msg)
 
-            # 2) Short-circuit empty
             if not msg:
                 return {"ok": True, "reply": _("(Nothing to send) Please type a message.")}
 
-            # 3) Config
+            # 2) Load config (defaults are safe)
             icp = request.env['ir.config_parameter'].sudo()
             provider = (icp.get_param('website_ai_chat_min.ai_provider') or '').lower()
             api_key = icp.get_param('website_ai_chat_min.ai_api_key') or ''
@@ -299,7 +306,7 @@ class WebsiteAIChatTestController(http.Controller):
 
             if provider == 'openai' and api_key:
                 try:
-                    import openai  # type: ignore
+                    import openai
                     openai.api_key = api_key
                     messages = []
                     if system_prompt:
@@ -317,7 +324,7 @@ class WebsiteAIChatTestController(http.Controller):
 
             elif provider in ('gemini', 'google') and api_key:
                 try:
-                    import google.generativeai as genai  # type: ignore
+                    import google.generativeai as genai
                     genai.configure(api_key=api_key)
                     gen_model = genai.GenerativeModel(model or "gemini-1.5-flash")
                     prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
