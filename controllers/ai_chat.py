@@ -272,7 +272,8 @@ class WebsiteAIChatTestController(http.Controller):
     def ai_chat_test_send(self, message=None):
         """Accept a message, optionally hit AI provider, return JSON. Works even without provider (Echo)."""
         # Basic input normalization
-        msg = (message or "").strip()
+        # msg = (message or "").strip()
+        msg = message
         _logger.info("AI-TEST recv user=%s len=%s", request.env.user.id, len(msg))
 
         try:
