@@ -1,12 +1,6 @@
 <odoo>
   <data>
 
-    <!-- Deactivate old inherited page (ONLY if it exists in this module) -->
-    <record id="ai_chat_page" model="ir.ui.view" context="{'active_test': False}">
-      <field name="active" eval="False"/>
-      <field name="inherit_id" eval="False"/>
-    </record>
-
     <!-- New stand-alone page -->
     <template id="ai_chat_page_main" name="AI Chat Page (Standalone)">
       <t t-call="website.layout">
@@ -20,7 +14,7 @@
               — <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
             </t>
           </div>
-          <!-- NOT self-closing -->
+          <!-- Not self-closing -->
           <div id="ai-chat-i18n"
                data-title="AI Chat"
                data-send="Send"
