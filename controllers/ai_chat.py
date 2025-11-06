@@ -315,7 +315,10 @@ class WebsiteAIChatTestController(http.Controller):
                     import google.generativeai as genai  # type: ignore
                     genai.configure(api_key=api_key)
                     gen_model = genai.GenerativeModel(model)
+
                     # prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
+
+                    _logger.info("User Message: %s", msg)
 
                     r = gen_model.generate_content(msg, request_options={"timeout": 15})
 
