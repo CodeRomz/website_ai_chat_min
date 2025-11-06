@@ -12,14 +12,14 @@ class ResConfigSettings(models.TransientModel):
         string="AI Provider",
         default="openai",
         config_parameter="website_ai_chat_min.provider",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="Select the AI provider to use for answering questions."
     )
 
     ai_api_key = fields.Char(
         string="AI API Key",
         config_parameter="website_ai_chat_min.api_key",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="API key for the selected AI provider."
     )
 
@@ -27,28 +27,30 @@ class ResConfigSettings(models.TransientModel):
         string="Model Name",
         default="gpt-4o-mini",
         config_parameter="website_ai_chat_min.model",
-        groups="website_ai_chat_min.group_ai_chat_admin",
-        help="Model identifier for the selected AI provider (e.g., 'gpt-4o-mini' or 'gemini-1.5-flash')."
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
+        help="Model identifier (e.g., 'gpt-4o-mini' or 'gemini-1.5-flash')."
     )
 
     docs_folder = fields.Char(
         string="Documents Folder (PDF)",
         config_parameter="website_ai_chat_min.docs_folder",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="Absolute path to a server folder containing PDF files used as context."
     )
 
-    sys_instruction = fields.Text(
+    # CHANGED: Text -> Char (allowed in res.config.settings)
+    sys_instruction = fields.Char(
         string="System Instructions",
         config_parameter="website_ai_chat_min.sys_instruction",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="Optional guardrails/instructions for the assistant."
     )
 
-    allowed_questions = fields.Text(
+    # CHANGED: Text -> Char (allowed in res.config.settings)
+    allowed_questions = fields.Char(
         string="Allowed Questions (Regex per line)",
         config_parameter="website_ai_chat_min.allowed_questions",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="If provided, only questions matching at least one regex are allowed. Leave empty to allow all."
     )
 
@@ -56,6 +58,6 @@ class ResConfigSettings(models.TransientModel):
         string="Answer Only From Context",
         default=True,
         config_parameter="website_ai_chat_min.context_only",
-        groups="website_ai_chat_min.group_ai_chat_admin",
+        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin",
         help="When checked, the assistant will refuse to answer if no relevant PDF context is found."
     )

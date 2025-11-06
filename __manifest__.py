@@ -3,7 +3,7 @@
     "name": "Website AI Chat (Minimal)",
     "summary": "Minimal AI-powered website chat with PDF context (Gemini/OpenAI)",
     "description": "Adds an authenticated website chat widget that answers user questions using OpenAI or Google Gemini, grounded on PDFs from a server folder.",
-    "version": "17.0.5.0.1",
+    "version": "17.0.5.0.3",
     "category": "Website",
     "author": "CodeRomz / Your Company",
     "website": "https://example.com",

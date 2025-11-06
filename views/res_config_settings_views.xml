@@ -1,35 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data>
-        <record id="res_config_settings_view_form_inherit_ai_chat_min" model="ir.ui.view">
-            <field name="name">res.config.settings.view.form.ai.chat.min</field>
-            <field name="model">res.config.settings</field>
-            <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//setting[@id='email_servers_setting']" position="after">
-                    <setting id="website_ai_chat_min_settings"
-                             string="Website AI Chat (Minimal)"
-                             groups="website_ai_chat_min.group_ai_chat_admin">
-                        <div class="content-group">
-                            <field name="ai_provider"/>
-                            <field name="ai_model"/>
-                        </div>
-                        <div class="content-group">
-                            <field name="ai_api_key" password="True"/>
-                            <field name="docs_folder"/>
-                        </div>
-                        <div class="content-group">
-                            <field name="context_only"/>
-                        </div>
-                        <div class="content-group">
-                            <field name="sys_instruction"
-                                   placeholder="If unsure, say 'I don&#39;t know'. Answer only from context."/>
-                            <field name="allowed_questions"
-                                   placeholder="One regex per line. Leave empty to allow all."/>
-                        </div>
-                    </setting>
-                </xpath>
-            </field>
-        </record>
-    </data>
+  <data>
+    <record id="res_config_settings_view_form_inherit_ai_chat_min" model="ir.ui.view">
+      <field name="name">res.config.settings.view.form.ai.chat.min</field>
+      <field name="model">res.config.settings</field>
+      <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
+      <field name="arch" type="xml">
+        <!-- Anchor AFTER a known setting from 'mail' (we depend on 'mail') -->
+        <xpath expr="//setting[@id='email_servers_setting']" position="after">
+          <setting id="website_ai_chat_min_settings"
+                   string="Website AI Chat (Minimal)"
+                   groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+
+            <div class="content-group">
+              <field name="ai_provider"/>
+              <field name="ai_model"/>
+            </div>
+            <div class="content-group">
+              <field name="ai_api_key" password="True"/>
+              <field name="docs_folder"/>
+            </div>
+            <div class="content-group">
+              <field name="context_only"/>
+            </div>
+
+            <div class="content-group">
+              <!-- widget='text' to render Char as textarea -->
+              <field name="sys_instruction" widget="text"
+                     placeholder="If unsure, say &#39;I don&#39;t know&#39;. Answer only from context."/>
+              <field name="allowed_questions" widget="text"
+                     placeholder="One regex per line. Leave empty to allow all."/>
+            </div>
+
+          </setting>
+        </xpath>
+      </field>
+    </record>
+  </data>
 </odoo>
