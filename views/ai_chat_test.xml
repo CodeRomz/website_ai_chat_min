@@ -49,11 +49,11 @@
 
             // Odoo type='json' often wraps result in JSON-RPC
             const data = await res.json();
-            const payload = (data && typeof data === "object" && "result" in data) ? data.result : data;
+            const payload = (data &amp;&amp; typeof data === "object" &amp;&amp; "result" in data) ? data.result : data;
 
-            if (payload && payload.ok) {
+            if (payload &amp;&amp; payload.ok) {
               append(out, (payload.reply || "").toString());
-            } else if (payload && payload.error) {
+            } else if (payload &amp;&amp; payload.error) {
               append(out, "ERR: " + payload.error);
             } else {
               append(out, "ERR: Unexpected response.");
