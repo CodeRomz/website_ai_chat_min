@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+    <!-- Ensure our CSS/JS are in the standard website bundle -->
+    <template id="assets_frontend" name="AI Chat Assets" inherit_id="web.assets_frontend">
+      <xpath expr="." position="inside">
+        <link rel="stylesheet" href="/website_ai_chat_min/static/src/css/ai_chat.css"/>
+        <script type="text/javascript" src="/website_ai_chat_min/static/src/js/ai_chat.js" defer="defer"/>
+      </xpath>
+    </template>
+  </data>
+</odoo>
