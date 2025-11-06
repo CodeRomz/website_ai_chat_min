@@ -21,58 +21,73 @@
       </section>
 
       <!-- Minimal inline JS just for the test page -->
-      <script type="text/javascript">
-      (function () {
-        function append(out, txt) {
-          out.textContent += txt + "\\n";
-          out.scrollTop = out.scrollHeight;
-        }
+      <script type="text/javascript"><![CDATA[
+        (function () {
+          function append(out, txt) {
+            out.textContent += txt + "\n";
+            out.scrollTop = out.scrollHeight;
+          }
 
-        const input = document.getElementById("msg");
-        const btn = document.getElementById("sendBtn");
-        const out = document.getElementById("out");
-
-        btn.addEventListener("click", async function () {
-          const content = (input.value || "").trim();
-          if (!content) { input.focus(); return; }
-
-          append(out, "> " + content);
-          input.value = "";
-          btn.disabled = true;
-
-          try {
-            const res = await fetch("/ai_chat/send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: content })
-            });
-
-            // Odoo type='json' often wraps result in JSON-RPC
-            const data = await res.json();
-            const payload = (data &amp;&amp; typeof data === "object" &amp;&amp; "result" in data) ? data.result : data;
-
-            if (payload &amp;&amp; payload.ok) {
-              append(out, (payload.reply || "").toString());
-            } else if (payload &amp;&amp; payload.error) {
-              append(out, "ERR: " + payload.error);
-            } else {
-              append(out, "ERR: Unexpected response.");
+          function getCsrfToken() {
+            // Prefer global injected by Odoo; fallback to cookie.
+            if (window.odoo && window.odoo.csrf_token) {
+              return window.odoo.csrf_token;
             }
-          } catch (e) {
-            append(out, "ERR: " + e);
-          } finally {
-            btn.disabled = false;
+            var m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : "";
           }
-        });
 
-        input.addEventListener("keydown", function (e) {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            btn.click();
-          }
-        });
-      })();
-      </script>
+          const input = document.getElementById("msg");
+          const btn   = document.getElementById("sendBtn");
+          const out   = document.getElementById("out");
+
+          btn.addEventListener("click", async function () {
+            const content = (input.value || "").trim();
+            if (!content) { input.focus(); return; }
+
+            append(out, "> " + content);
+            input.value = "";
+            btn.disabled = true;
+
+            try {
+              const res = await fetch("/ai_chat_test/send", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                  "X-Requested-With": "XMLHttpRequest",
+                  "X-CSRFToken": getCsrfToken()
+                },
+                credentials: "same-origin", // send session cookies
+                body: JSON.stringify({ message: content })
+              });
+
+              const data = await res.json();
+              // Odoo type='json' typically returns JSON-RPC: { jsonrpc: "2.0", result: {...} }
+              const payload = (data && typeof data === "object" && "result" in data) ? data.result : data;
+
+              if (payload && payload.ok) {
+                append(out, String(payload.reply || ""));
+              } else if (payload && payload.error) {
+                append(out, "ERR: " + payload.error);
+              } else {
+                append(out, "ERR: Unexpected response.");
+              }
+            } catch (e) {
+              append(out, "ERR: " + e);
+            } finally {
+              btn.disabled = false;
+            }
+          });
+
+          input.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              btn.click();
+            }
+          });
+        })();
+      ]]></script>
     </xpath>
   </template>
 </odoo>

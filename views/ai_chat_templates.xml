@@ -1,29 +1,34 @@
 <odoo>
-  <!-- Deactivate old inherited page if it still exists -->
-  <record id="ai_chat_page" model="ir.ui.view">
-    <field name="active">False</field>
-    <field name="inherit_id" eval="False"/>
-  </record>
+  <data>
 
-  <!-- New stand-alone page -->
-  <template id="ai_chat_page_main" name="AI Chat Page (Standalone)">
-    <t t-call="website.layout">
-      <t t-set="page_title">AI Chat</t>
-      <section id="ai-chat-container" class="container my-5">
-        <h1>AI Chat</h1>
-        <div class="ai-chat-min__panel" id="ai-chat-standalone" aria-live="polite"></div>
-        <div class="text-muted mt-3">
-          <span>No data is stored. Content may be sent to external AI.</span>
-          <t t-if="privacy_url">
-            — <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
-          </t>
-        </div>
-        <div id="ai-chat-i18n"
-             data-title="AI Chat"
-             data-send="Send"
-             data-placeholder="Type your question…"
-             data-close="Close"/>
-      </section>
-    </t>
-  </template>
+    <!-- Deactivate old inherited page (ONLY if it exists in this module) -->
+    <record id="ai_chat_page" model="ir.ui.view" context="{'active_test': False}">
+      <field name="active" eval="False"/>
+      <field name="inherit_id" eval="False"/>
+    </record>
+
+    <!-- New stand-alone page -->
+    <template id="ai_chat_page_main" name="AI Chat Page (Standalone)">
+      <t t-call="website.layout">
+        <t t-set="page_title">AI Chat</t>
+        <section id="ai-chat-container" class="container my-5">
+          <h1>AI Chat</h1>
+          <div class="ai-chat-min__panel" id="ai-chat-standalone" aria-live="polite"></div>
+          <div class="text-muted mt-3">
+            <span>No data is stored. Content may be sent to external AI.</span>
+            <t t-if="privacy_url">
+              — <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
+            </t>
+          </div>
+          <!-- NOT self-closing -->
+          <div id="ai-chat-i18n"
+               data-title="AI Chat"
+               data-send="Send"
+               data-placeholder="Type your question…"
+               data-close="Close"></div>
+        </section>
+      </t>
+    </template>
+
+  </data>
 </odoo>
