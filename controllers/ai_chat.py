@@ -70,27 +70,23 @@ class WebsiteAIChatController(http.Controller):
     def ai_chat_page(self, **kw):
         if not _user_can_use_chat(request.env):
             raise AccessError(_("You do not have access to AI Chat."))
-
         vals = {
             'privacy_url': request.env['ir.config_parameter'].sudo().get_param(
                 'website_ai_chat_min.privacy_url', default=''
             ),
         }
-
-        # ✅ render the new template id
         return request.render('website_ai_chat_min.ai_chat_page_main', vals)
 
     @http.route('/ai_chat/can_load', type='json', auth='public', csrf=False, methods=['POST'])
     def can_load(self):
-        # try:
-        #     show = _user_can_use_chat(request.env)
-        #     _logger.info("[website_ai_chat_min] can_load show=%s user=%s", show, request.env.user.login)
-        #     return {'show': show}
-        # except Exception as e:
-        #     _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
-        #     return {'show': False}
-
-        return {'show': True}
+        try:
+            show = _user_can_use_chat(request.env)
+            _logger.info("[website_ai_chat_min] can_load show=%s user=%s",
+                         show, request.env.user.login)
+            return {'show': bool(show)}
+        except Exception as e:
+            _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
+            return {'show': False}
 
     @http.route('/ai_chat/send', type='json', auth='user', csrf=True, methods=['POST'])
     def send(self, question=None):
