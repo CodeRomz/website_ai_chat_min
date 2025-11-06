@@ -1,4 +1,3 @@
-/* website_ai_chat_min/static/src/js/ai_chat.js — bulletproof public init */
 (() => {
   "use strict";
 
@@ -131,4 +130,3 @@
   // Ensure body exists even if assets load after DOMContentLoaded
   bodyReady(init);
 })();
-console.log("AI Chat JS (public) loaded");
