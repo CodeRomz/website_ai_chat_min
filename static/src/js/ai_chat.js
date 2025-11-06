@@ -20,7 +20,7 @@
     const bubble = document.createElement("button");
     bubble.className = "ai-chat-min__bubble";
     bubble.type = "button";
-    bubble.setAttribute("aria-label", "Academy AI");
+    bubble.setAttribute("aria-label", "Academy Ai");
     bubble.textContent = "💬";
 
     const panel = document.createElement("div");
@@ -32,7 +32,7 @@
     const header = document.createElement("div");
     header.className = "ai-chat-min__header";
     const title = document.createElement("span");
-    title.textContent = "AI Chat";
+    title.textContent = "Academy Ai";
     const closeBtn = document.createElement("button");
     closeBtn.className = "ai-chat-min__close";
     closeBtn.type = "button";
