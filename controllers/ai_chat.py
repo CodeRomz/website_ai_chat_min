@@ -269,28 +269,34 @@ class WebsiteAIChatTestController(http.Controller):
             pass  # reserved for future cleanup
 
     @http.route('/ai_chat_test/send', type='json', auth='user', methods=['POST'])
-    def ai_chat_test_send(self, message=None):
-        """Accept a message, optionally hit AI provider, return JSON. Works even without provider (Echo)."""
-        # Basic input normalization
-        # msg = (message or "").strip()
-        msg = str(message)
-        _logger.info("AI-TEST recv user=%s len=%s", request.env.user.id, len(msg))
+    def ai_chat_test_send(self, message=None, **kw):
+        _logger.info("AI-TEST recv user=%s", request.env.user.id)
 
         try:
-            # Pull config (if present)
-            icp = request.env['ir.config_parameter'].sudo()
-            provider = (icp.get_param('website_ai_chat_min.ai_provider') or '').lower()
-            api_key = icp.get_param('website_ai_chat_min.ai_api_key')
-            model = icp.get_param('website_ai_chat_min.ai_model')
-            system_prompt = icp.get_param('website_ai_chat_min.system_prompt') or ''
+            # 1) Normalize input for both JSON-RPC and plain JSON
+            payload = request.jsonrequest or {}
+            if message is None:
+                if isinstance(payload, dict) and 'params' in payload:
+                    message = (payload.get('params') or {}).get('message')
+                elif isinstance(payload, dict):
+                    message = payload.get('message')
 
-            # No input? Short-circuit
+            msg = (message or "").strip()
+            _logger.info("User Message (norm): %r", msg)
+
+            # 2) Short-circuit empty
             if not msg:
                 return {"ok": True, "reply": _("(Nothing to send) Please type a message.")}
 
+            # 3) Config
+            icp = request.env['ir.config_parameter'].sudo()
+            provider = (icp.get_param('website_ai_chat_min.ai_provider') or '').lower()
+            api_key = icp.get_param('website_ai_chat_min.ai_api_key') or ''
+            model = icp.get_param('website_ai_chat_min.ai_model') or 'gpt-3.5-turbo'
+            system_prompt = icp.get_param('website_ai_chat_min.system_prompt') or ''
+
             reply = None
 
-            # --- Optional OpenAI ---
             if provider == 'openai' and api_key:
                 try:
                     import openai  # type: ignore
@@ -309,26 +315,18 @@ class WebsiteAIChatTestController(http.Controller):
                     _logger.exception("OpenAI call failed")
                     reply = _("(OpenAI error) %s") % str(oe)
 
-            # --- Optional Gemini ---
             elif provider in ('gemini', 'google') and api_key:
                 try:
                     import google.generativeai as genai  # type: ignore
                     genai.configure(api_key=api_key)
-                    gen_model = genai.GenerativeModel(model)
-
-                    # prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
-
-                    _logger.info("User Message: %s", msg)
-
-                    r = gen_model.generate_content(msg, request_options={"timeout": 15})
-
+                    gen_model = genai.GenerativeModel(model or "gemini-1.5-flash")
+                    prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
+                    r = gen_model.generate_content(prompt, request_options={"timeout": 15})
                     reply = (getattr(r, "text", None) or "").strip()
-
                 except Exception as ge:
                     _logger.exception("Gemini call failed")
                     reply = _("(Gemini error) %s") % str(ge)
 
-            # --- Fallback: Echo ---
             else:
                 reply = _("Echo: %s") % msg
 
@@ -339,9 +337,5 @@ class WebsiteAIChatTestController(http.Controller):
 
         except Exception as e:
             _logger.exception("ai_chat_test_send failed")
-            # Keep user-facing errors generic; log details server-side
             return {"ok": False, "error": _("Server error. Please try again."), "detail": tools.html_escape(str(e))}
-        else:
-            pass
-        finally:
-            pass
+
