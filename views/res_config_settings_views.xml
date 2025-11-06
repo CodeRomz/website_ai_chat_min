@@ -1,57 +1,42 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-  <data>
-    <record id="res_config_settings_view_form_inherit_ai_after_seo" model="ir.ui.view">
-      <field name="name">res.config.settings.view.form.inherit.ai.after.seo</field>
-      <field name="model">res.config.settings</field>
-      <field name="inherit_id" ref="website.res_config_settings_view_form"/>
-      <field name="priority" eval="25"/>
-      <field name="arch" type="xml">
-        <xpath expr="//app[@name='website']/block[@name='seo']" position="after">
-          <block name="website_ai_settings" title="AI Settings" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
-            <setting string="AI Provider &amp; Model">
-              <div class="row mt16">
-                <label class="col-3 o_light_label" for="ai_provider"/>
-                <field class="col-9" name="ai_provider"/>
-              </div>
-              <div class="row mt8">
-                <label class="col-3 o_light_label" for="ai_model"/>
-                <field class="col-9" name="ai_model" placeholder="gpt-3.5-turbo"/>
-              </div>
-            </setting>
-            <setting string="API Key &amp; Documents">
-              <div class="row mt16">
-                <label class="col-3 o_light_label" for="ai_api_key"/>
-                <field class="col-9" name="ai_api_key" password="True" placeholder="sk-..."/>
-              </div>
-              <div class="row mt8">
-                <label class="col-3 o_light_label" for="docs_folder"/>
-                <field class="col-9" name="docs_folder" placeholder="/opt/odoo/data/pdfs"/>
-              </div>
-            </setting>
-            <setting string="System Instruction">
-              <div class="row mt16">
-                <label class="col-3 o_light_label" for="sys_instruction"/>
-                <field class="col-9" name="sys_instruction" widget="text"
-                       placeholder="Keep answers concise. If unsure, say you don’t know."/>
-              </div>
-            </setting>
-            <setting string="Allowed Questions (Regex)">
-              <div class="row mt16">
-                <label class="col-3 o_light_label" for="allowed_questions"/>
-                <field class="col-9" name="allowed_questions" widget="text"
-                       placeholder="^what\b&#10;^how\b"/>
-              </div>
-            </setting>
-            <setting string="Answer Only From Documents">
-              <div class="row mt16">
-                <label class="col-3 o_light_label" for="context_only"/>
-                <field class="col-9" name="context_only"/>
-              </div>
-            </setting>
-          </block>
-        </xpath>
-      </field>
-    </record>
-  </data>
+  <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
+    <field name="name">res.config.settings.view.form.ai.chat</field>
+    <field name="model">res.config.settings</field>
+    <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//app[@name='website']//block[@name='seo' or @string='SEO']" position="after">
+        <block string="AI Settings" name="website_ai_settings"
+               groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+          <group>
+            <label for="ai_provider"/>
+            <field name="ai_provider"/>
+            <label for="ai_model"/>
+            <field name="ai_model"/>
+            <label for="ai_api_key"/>
+            <field name="ai_api_key" password="True"/>
+          </group>
+          <group>
+            <label for="system_prompt"/>
+            <field name="system_prompt"/>
+            <label for="allowed_regex"/>
+            <field name="allowed_regex"/>
+          </group>
+          <group>
+            <label for="docs_folder"/>
+            <field name="docs_folder"/>
+            <label for="answer_only_from_docs"/>
+            <field name="answer_only_from_docs"/>
+            <label for="privacy_url"/>
+            <field name="privacy_url"/>
+          </group>
+          <group string="Rate Limiting">
+            <label for="rate_limit_max"/>
+            <field name="rate_limit_max"/>
+            <label for="rate_limit_window"/>
+            <field name="rate_limit_window"/>
+          </group>
+        </block>
+      </xpath>
+    </field>
+  </record>
 </odoo>
