@@ -99,15 +99,14 @@
     }
 
     async function canLoad() {
-      await fetch("/ai_chat/can_load", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}"
-      }).then(r => r.json()).then(d => {
-        if (!d || d.show !== true) {
-          wrap.remove();
-        }
-      }).catch(() => wrap.remove());
+        await fetch("/ai_chat/can_load", {   // ← underscore
+            method: "POST",                    // ← POST
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+            })
+        .then(r => r.json())
+        .then(d => { if (!d || d.show !== true) wrap.remove(); })
+        .catch(() => wrap.remove());
     }
 
     async function sendMsg() {
