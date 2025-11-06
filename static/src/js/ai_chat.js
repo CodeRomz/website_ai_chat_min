@@ -99,7 +99,7 @@
     }
 
     async function canLoad() {
-        await fetch("/ai_chat/can_load", {   // ← underscore
+        await fetch("/ai-chat/can-load", {   // ← underscore
             method: "POST",                    // ← POST
             headers: { "Content-Type": "application/json" },
             body: "{}"
