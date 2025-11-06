@@ -41,7 +41,7 @@
           btn.disabled = true;
 
           try {
-            const res = await fetch("/ai_chat_test/send", {
+            const res = await fetch("/ai_chat/send", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: content })
