@@ -1,42 +1,42 @@
 <odoo>
-  <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
-    <field name="name">res.config.settings.view.form.ai.chat</field>
-    <field name="model">res.config.settings</field>
-    <field name="inherit_id" ref="website.res_config_settings_view_form"/>
-    <field name="arch" type="xml">
-      <xpath expr="//app[@name='website']//block[@name='seo' or @string='SEO']" position="after">
-        <block string="AI Settings" name="website_ai_settings"
-               groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
-          <group>
-            <label for="ai_provider"/>
-            <field name="ai_provider"/>
-            <label for="ai_model"/>
-            <field name="ai_model"/>
-            <label for="ai_api_key"/>
-            <field name="ai_api_key" password="True"/>
-          </group>
-          <group>
-            <label for="system_prompt"/>
-            <field name="system_prompt"/>
-            <label for="allowed_regex"/>
-            <field name="allowed_regex"/>
-          </group>
-          <group>
-            <label for="docs_folder"/>
-            <field name="docs_folder"/>
-            <label for="answer_only_from_docs"/>
-            <field name="answer_only_from_docs"/>
-            <label for="privacy_url"/>
-            <field name="privacy_url"/>
-          </group>
-          <group string="Rate Limiting">
-            <label for="rate_limit_max"/>
-            <field name="rate_limit_max"/>
-            <label for="rate_limit_window"/>
-            <field name="rate_limit_window"/>
-          </group>
-        </block>
-      </xpath>
-    </field>
-  </record>
+    <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.ai.chat</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='website']//block[@name='seo']" position="after">
+                <block string="AI Settings" name="website_ai_settings"
+                       groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+                    <group>
+                        <label for="ai_provider"/>
+                        <field name="ai_provider"/>
+                        <label for="ai_model"/>
+                        <field name="ai_model"/>
+                        <label for="ai_api_key"/>
+                        <field name="ai_api_key" password="True"/>
+                    </group>
+                    <group>
+                        <label for="system_prompt"/>
+                        <field name="system_prompt"/>
+                        <label for="allowed_regex"/>
+                        <field name="allowed_regex"/>
+                    </group>
+                    <group>
+                        <label for="docs_folder"/>
+                        <field name="docs_folder"/>
+                        <label for="answer_only_from_docs"/>
+                        <field name="answer_only_from_docs"/>
+                        <label for="privacy_url"/>
+                        <field name="privacy_url"/>
+                    </group>
+                    <group string="Rate Limiting">
+                        <label for="rate_limit_max"/>
+                        <field name="rate_limit_max"/>
+                        <label for="rate_limit_window"/>
+                        <field name="rate_limit_window"/>
+                    </group>
+                </block>
+            </xpath>
+        </field>
+    </record>
 </odoo>

@@ -1,0 +1,24 @@
+<odoo>
+    <template id="ai_chat_page" name="AI Chat Page" inherit_id="website.layout">
+        <xpath expr="//main" position="inside">
+            <section id="ai-chat-container" class="container my-5">
+                <h1 t-esc="ai_i18n.get('title')"/>
+                <div class="ai-chat-min__panel" id="ai-chat-standalone" aria-live="polite"></div>
+                <div class="text-muted mt-3">
+                    <t t-esc="ai_i18n.get('gdpr_notice')"/>
+                    <t t-if="privacy_url">
+                        —
+                        <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
+                    </t>
+                </div>
+            </section>
+
+            <!-- i18n bridge for JS -->
+            <div id="ai-chat-i18n"
+                 t-att-data-title="ai_i18n.get('title')"
+                 t-att-data-send="ai_i18n.get('send')"
+                 t-att-data-placeholder="ai_i18n.get('placeholder')"
+                 t-att-data-close="ai_i18n.get('close')"/>
+        </xpath>
+    </template>
+</odoo>
