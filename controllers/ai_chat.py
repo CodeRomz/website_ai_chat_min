@@ -88,12 +88,11 @@ class WebsiteAIChatController(http.Controller):
 
     @http.route('/ai_chat/can_load', type='json', auth='public', csrf=False, methods=['POST'])
     def can_load(self):
-        """Return {'show': bool} without leaking any user data."""
         try:
             show = _user_can_use_chat(request.env)
+            _logger.info("[website_ai_chat_min] can_load show=%s user=%s", show, request.env.user.login)
             return {'show': show}
         except Exception as e:
-            # Log server-side only; do not expose details to the browser
             _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
             return {'show': False}
 
