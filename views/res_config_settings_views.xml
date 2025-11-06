@@ -6,43 +6,97 @@
       <field name="model">res.config.settings</field>
       <field name="inherit_id" ref="base.res_config_settings_view_form"/>
       <field name="arch" type="xml">
-        <xpath expr="//app[@name='website']" position="inside">
-          <block id="website_ai_chat_min_block" title="AI Chat (Minimal)" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
-            <setting string="AI Provider &amp; Model">
-              <div class="row">
+        <xpath expr="//div[contains(@class,'o_settings_container')]" position="inside">
+          
+          <!-- Group 1: Provider & Model -->
+          <div class="o_setting_box" id="website_ai_chat_min_box_provider" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <div class="o_setting_left_pane">
+              <div class="row mt16">
                 <label class="col-3 o_light_label" for="ai_provider"/>
-                <field name="ai_provider" class="col-9"/>
+                <field class="col-9" name="ai_provider"/>
               </div>
-              <div class="row mt-2">
+              <div class="row mt8">
                 <label class="col-3 o_light_label" for="ai_model"/>
-                <field name="ai_model" class="col-9" placeholder="gpt-3.5-turbo"/>
+                <field class="col-9" name="ai_model" placeholder="gpt-3.5-turbo"/>
               </div>
-            </setting>
+            </div>
+            <div class="o_setting_right_pane">
+              <label for="ai_provider"/>
+              <div class="text-muted">
+                Choose your AI backend and model. Examples: <b>OpenAI</b> with <code>gpt-3.5-turbo</code> or <code>gpt-4</code>,
+                <b>Gemini</b> with <code>gemini-pro</code>.
+              </div>
+            </div>
+          </div>
 
-            <setting string="API Key &amp; Documents">
-              <div class="row">
+          <!-- Group 2: API Key & Documents -->
+          <div class="o_setting_box" id="website_ai_chat_min_box_keys" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <div class="o_setting_left_pane">
+              <div class="row mt16">
                 <label class="col-3 o_light_label" for="ai_api_key"/>
-                <field name="ai_api_key" class="col-9" password="True" placeholder="sk-..."/>
+                <field class="col-9" name="ai_api_key" password="True" placeholder="sk-..."/>
               </div>
-              <div class="row mt-2">
+              <div class="row mt8">
                 <label class="col-3 o_light_label" for="docs_folder"/>
-                <field name="docs_folder" class="col-9" placeholder="/opt/odoo/data/pdfs"/>
+                <field class="col-9" name="docs_folder" placeholder="/opt/odoo/data/pdfs"/>
               </div>
-            </setting>
+            </div>
+            <div class="o_setting_right_pane">
+              <label for="ai_api_key"/>
+              <div class="text-muted">
+                Enter a valid API key for the selected provider. If a <b>Documents Folder</b> is set, the bot will ground answers on PDF excerpts.
+              </div>
+            </div>
+          </div>
 
-            <setting string="System Instruction">
-              <field name="sys_instruction" widget="text" placeholder="Keep answers concise. If unsure, say you don’t know."/>
-            </setting>
+          <!-- Group 3: System Instruction -->
+          <div class="o_setting_box" id="website_ai_chat_min_box_system" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <div class="o_setting_left_pane">
+              <div class="row mt16">
+                <label class="col-3 o_light_label" for="sys_instruction"/>
+                <field class="col-9" name="sys_instruction" widget="text" placeholder="Keep answers concise. If unsure, say you don’t know."/>
+              </div>
+            </div>
+            <div class="o_setting_right_pane">
+              <label for="sys_instruction"/>
+              <div class="text-muted">
+                Optional system prompt that guides tone and constraints.
+              </div>
+            </div>
+          </div>
 
-            <setting string="Allowed Questions (Regex)">
-              <field name="allowed_questions" widget="text" placeholder="^what\b
-^how\b"/>
-            </setting>
+          <!-- Group 4: Allowed Questions -->
+          <div class="o_setting_box" id="website_ai_chat_min_box_allowed" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <div class="o_setting_left_pane">
+              <div class="row mt16">
+                <label class="col-3 o_light_label" for="allowed_questions"/>
+                <field class="col-9" name="allowed_questions" widget="text" placeholder="^what\b&#10;^how\b"/>
+              </div>
+            </div>
+            <div class="o_setting_right_pane">
+              <label for="allowed_questions"/>
+              <div class="text-muted">
+                Regex patterns (one per line). If set, only matching questions are accepted.
+              </div>
+            </div>
+          </div>
 
-            <setting string="Answer Only From Documents">
-              <field name="context_only"/>
-            </setting>
-          </block>
+          <!-- Group 5: Context Only -->
+          <div class="o_setting_box" id="website_ai_chat_min_box_context" groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+            <div class="o_setting_left_pane">
+              <div class="row mt16">
+                <label class="col-3 o_light_label" for="context_only"/>
+                <field class="col-9" name="context_only"/>
+              </div>
+            </div>
+            <div class="o_setting_right_pane">
+              <label for="context_only"/>
+              <div class="text-muted">
+                If enabled, bot will only answer when relevant PDF context is found; otherwise it will say it doesn’t know.
+              </div>
+            </div>
+          </div>
+
         </xpath>
       </field>
     </record>
