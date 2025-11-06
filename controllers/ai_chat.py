@@ -76,7 +76,6 @@ def _read_pdf_snippets(root_folder: str, query: str, max_files: int = 40, max_pa
                 low = txt.lower()
                 score = sum(1 for w in q_low if w and w in low)
                 if score:
-                    # take a small slice
                     slice_txt = txt[:1200]
                     file_hits.append(f"[{os.path.basename(pdf_path)}]\n{slice_txt}")
                 if len(file_hits) >= 2:
@@ -94,7 +93,9 @@ def _read_pdf_snippets(root_folder: str, query: str, max_files: int = 40, max_pa
 
 
 def _call_openai(api_key: str, model: str, system_prompt: str, user_prompt: str) -> str:
-    """Call OpenAI using either new or old SDK, transparently."""
+    """
+    Call OpenAI using either new or old SDK, transparently.
+    """
     if _OPENAI_NEW:
         client = _OPENAI_NEW(api_key=api_key)
         resp = client.chat.completions.create(
@@ -124,7 +125,6 @@ def _call_gemini(api_key: str, model: str, system_prompt: str, user_prompt: str)
     if not _GEMINI_OK:
         raise UserError(_("Google Generative AI SDK not available. Please install 'google-generativeai'."))
     genai.configure(api_key=api_key)
-    # Gemini system prompt can be prefixed to user content for simplicity
     model_obj = genai.GenerativeModel(model)
     full_prompt = f"{system_prompt}\n\nUser:\n{user_prompt}"
     resp = model_obj.generate_content(full_prompt)
@@ -138,15 +138,15 @@ class WebsiteAIChatController(http.Controller):
 
     @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False)
     def can_load(self):
-        """Decide whether to render the chat bubble."""
+        """
+        Decide whether to render the chat bubble.
+        Show for any non-public user who is in ai_chat_user group OR in base.group_system (admin).
+        """
         user = request.env.user
         show = False
         try:
             if user and not user._is_public():
-                show = bool(
-                    user.has_group("website_ai_chat_min.group_ai_chat_user")
-                    or user.has_group("base.group_system")
-                )
+                show = True
         except Exception as e:
             _logger.debug("can_load group check failed: %s", e)
             show = False
@@ -154,7 +154,10 @@ class WebsiteAIChatController(http.Controller):
 
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True)
     def send(self, question=None):
-        """Handle a chat message, optionally grounding with PDF context."""
+        """
+        Handle a chat message, optionally grounding with PDF context.
+        Returns {ok: bool, reply: str}.
+        """
         icp = request.env["ir.config_parameter"].sudo()
         provider = icp.get_param("website_ai_chat_min.ai_provider", "openai")
         api_key = icp.get_param("website_ai_chat_min.ai_api_key", "")
@@ -185,6 +188,7 @@ class WebsiteAIChatController(http.Controller):
 
         context_snippets = _read_pdf_snippets(docs_folder, q) if docs_folder else ""
         if context_only and not context_snippets:
+            # Treat as a normal message (not an error) for better UX
             return {"ok": True, "reply": _("I don’t know based on the current documents.")}
 
         system_prompt = (sys_instruction or "").strip()

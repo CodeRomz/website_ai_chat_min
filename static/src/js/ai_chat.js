@@ -1,7 +1,6 @@
 /**
- * website_ai_chat_min - Frontend Chat Bubble
- * Minimal vanilla JS to render a chat bubble and panel, call /ai_chat/send,
- * and display responses safely.
+ * website_ai_chat_min - Frontend Chat Bubble (Odoo 17)
+ * Vanilla JS: renders a chat bubble/panel, posts to /ai_chat/send, appends safe messages.
  */
 (function () {
   function getCookie(name) {
@@ -103,8 +102,7 @@
       const el = document.createElement("div");
       el.className = "ai-chat-min__msg ai-chat-min__msg--" + role;
       el.id = id;
-      // prevent XSS by using textContent
-      el.textContent = String(text || "");
+      el.textContent = String(text || ""); // safe against XSS
       body.appendChild(el);
       body.scrollTop = body.scrollHeight;
       return id;

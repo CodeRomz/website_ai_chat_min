@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 {
-    "name": "Website AI Chat (Minimal) - Fixed for Odoo 17 CE",
-    "summary": "Add a minimal AI chat bubble to the website with OpenAI/Gemini backends, PDF-grounded context.",
-    "version": "17.0.1.0.1",
+    "name": "Website AI Chat (Minimal)",
+    "summary": "AI chat bubble for Website with OpenAI/Gemini backends and optional PDF grounding.",
+    "version": "17.0.1.1.0",
     "category": "Website",
     "license": "LGPL-3",
     "author": "Your Company",

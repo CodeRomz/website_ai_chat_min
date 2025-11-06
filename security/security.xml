@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <data noupdate="0">
-        <record id="group_ai_chat_user" model="res.groups">
-            <field name="name">Website AI Chat / User</field>
-            <field name="category_id" ref="base.module_category_website"/>
-        </record>
+  <data noupdate="0">
+    <record id="group_ai_chat_user" model="res.groups">
+      <field name="name">Website AI Chat / User</field>
+      <field name="category_id" ref="base.module_category_website"/>
+    </record>
 
-        <record id="group_ai_chat_admin" model="res.groups">
-            <field name="name">Website AI Chat / Admin</field>
-            <field name="category_id" ref="base.module_category_website"/>
-            <field name="implied_ids" eval="[(4, ref('website_ai_chat_min.group_ai_chat_user'))]"/>
-        </record>
-    </data>
+    <record id="group_ai_chat_admin" model="res.groups">
+      <field name="name">Website AI Chat / Admin</field>
+      <field name="category_id" ref="base.module_category_website"/>
+      <!-- Admins of AI Chat automatically get end-user privileges -->
+      <field name="implied_ids" eval="[(4, ref('website_ai_chat_min.group_ai_chat_user'))]"/>
+    </record>
+  </data>
 </odoo>
