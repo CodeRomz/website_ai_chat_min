@@ -20,30 +20,36 @@ class ResConfigSettings(models.TransientModel):
         default='gpt-4o-mini',
         config_parameter='website_ai_chat_min.ai_model',
         help="Exact model name supported by the selected provider.",
+        size=128,
     )
 
     ai_api_key = fields.Char(
         string="API Key",
         config_parameter='website_ai_chat_min.ai_api_key',
         help="API key for the selected provider. Keep secret.",
+        size=512,
     )
 
-    system_prompt = fields.Text(
+    # OWL-safe: use Char (Text is not allowed on res.config.settings)
+    system_prompt = fields.Char(
         string="System Prompt",
         config_parameter='website_ai_chat_min.system_prompt',
         help="Optional system instructions prepended to every conversation.",
+        size=4096,
     )
 
     allowed_regex = fields.Char(
         string="Allowed Questions (regex)",
         config_parameter='website_ai_chat_min.allowed_regex',
         help="Only allow questions that match this regular expression (case-insensitive). Leave empty to allow all.",
+        size=1024,
     )
 
     docs_folder = fields.Char(
         string="PDF Folder",
         config_parameter='website_ai_chat_min.docs_folder',
         help="Absolute server path of a folder containing PDF documents used for grounding.",
+        size=1024,
     )
 
     answer_only_from_docs = fields.Boolean(
@@ -56,6 +62,7 @@ class ResConfigSettings(models.TransientModel):
         string="Privacy Policy URL",
         config_parameter='website_ai_chat_min.privacy_url',
         help="Optional URL to your privacy policy displayed in the chat UI.",
+        size=1024,
     )
 
     rate_limit_max = fields.Integer(
