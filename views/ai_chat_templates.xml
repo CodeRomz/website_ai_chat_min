@@ -1,6 +1,13 @@
 <odoo>
-  <!-- REPLACE the old inherited template with this non-inheriting page -->
-  <template id="ai_chat_page" name="AI Chat Page">
+
+  <!-- 1) Deactivate the old inherited view if it exists (same id as before) -->
+  <record id="ai_chat_page" model="ir.ui.view">
+    <field name="active">False</field>
+    <field name="inherit_id" eval="False"/>
+  </record>
+
+  <!-- 2) New standalone page (no inherit), new XML ID -->
+  <template id="ai_chat_page_main" name="AI Chat Page (Standalone)">
     <t t-call="website.layout">
       <t t-set="page_title">AI Chat</t>
 
@@ -11,14 +18,13 @@
         <div class="ai-chat-min__panel" id="ai-chat-standalone" aria-live="polite"></div>
 
         <div class="text-muted mt-3">
-          <!-- keep this simple so it never errors -->
           <span>No data is stored. Content may be sent to external AI.</span>
           <t t-if="privacy_url">
             — <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
           </t>
         </div>
 
-        <!-- i18n bridge for JS only (not used by QWeb) -->
+        <!-- i18n bridge for JS only; QWeb won’t read this -->
         <div id="ai-chat-i18n"
              data-title="AI Chat"
              data-send="Send"
@@ -27,4 +33,5 @@
       </section>
     </t>
   </template>
+
 </odoo>
