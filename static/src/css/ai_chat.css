@@ -1,145 +1,97 @@
-/* website_ai_chat_min/static/src/js/ai_chat.js — login-only bubble */
-(() => {
-  "use strict";
+/* website_ai_chat_min — minimal, robust styling */
 
-  // unwrap Odoo JSON-RPC envelopes
-  const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
+.ai-chat-min__wrap {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9999;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
 
-  // ensure document.body exists (Odoo website assets can load late)
-  function bodyReady(fn) {
-    if (document.body) return fn();
-    const obs = new MutationObserver(() => {
-      if (document.body) { obs.disconnect(); fn(); }
-    });
-    obs.observe(document.documentElement, { childList: true, subtree: true });
-  }
+.ai-chat-min__bubble {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: #1f6feb;
+  color: #fff;
+  font-size: 24px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
 
-  function buildUI(mount) {
-    const wrap = document.createElement("div");
-    wrap.className = "ai-chat-min__wrap";
+.ai-chat-min__panel[hidden] { display: none !important; }
 
-    const bubble = document.createElement("button");
-    bubble.className = "ai-chat-min__bubble";
-    bubble.type = "button";
-    bubble.setAttribute("aria-label", "AI Chat");
-    bubble.textContent = "💬";
+.ai-chat-min__panel {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  height: 480px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.25);
+  overflow: hidden;
+}
 
-    const panel = document.createElement("div");
-    panel.className = "ai-chat-min__panel";
-    panel.setAttribute("role", "dialog");
-    panel.setAttribute("aria-modal", "true");
-    panel.hidden = true;
+.ai-chat-min__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #1f6feb;
+  color: #fff;
+}
 
-    const header = document.createElement("div");
-    header.className = "ai-chat-min__header";
-    const title = document.createElement("span");
-    title.textContent = "AI Chat";
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ai-chat-min__close";
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    header.appendChild(title);
-    header.appendChild(closeBtn);
+.ai-chat-min__close {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-size: 20px;
+}
 
-    const body = document.createElement("div");
-    body.className = "ai-chat-min__body";
+.ai-chat-min__body {
+  flex: 1;
+  padding: 12px;
+  overflow: auto;
+  background: #f8f9fb;
+}
 
-    const footer = document.createElement("div");
-    footer.className = "ai-chat-min__footer";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Type your question…";
-    const send = document.createElement("button");
-    send.className = "ai-chat-min__send";
-    send.type = "button";
-    send.textContent = "Send";
-    footer.appendChild(input);
-    footer.appendChild(send);
+.ai-chat-min__footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
 
-    panel.appendChild(header);
-    panel.appendChild(body);
-    panel.appendChild(footer);
-    wrap.appendChild(bubble);
-    wrap.appendChild(panel);
+.ai-chat-min__footer input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
 
-    function toggle(open) {
-      panel.hidden = (open === undefined) ? !panel.hidden : !open;
-      (panel.hidden ? bubble : input).focus();
-    }
-    bubble.addEventListener("click", () => toggle(true));
-    closeBtn.addEventListener("click", () => toggle(false));
-    window.addEventListener("keydown", (ev) => {
-      if (!panel.hidden && ev.key === "Escape") toggle(false);
-    });
+.ai-chat-min__send {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #1f6feb;
+  color: #fff;
+  cursor: pointer;
+}
 
-    function appendMessage(cls, text) {
-      const row = document.createElement("div");
-      row.className = `ai-chat-min__msg ${cls}`;
-      row.textContent = String(text || "");
-      body.appendChild(row);
-      body.scrollTop = body.scrollHeight;
-    }
+.ai-chat-min__msg {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  max-width: 82%;
+  word-wrap: break-word;
+}
 
-    async function sendMsg() {
-      const q = input.value.trim();
-      if (!q) return;
-      appendMessage("user", q);
-      input.value = "";
-
-      const headers = { "Content-Type": "application/json" };
-      const token = (document.cookie.match(/(^| )csrf_token=([^;]+)/) || [])[2] ||
-                    (document.cookie.match(/(^| )frontend_csrf_token=([^;]+)/) || [])[2];
-      if (token) { headers["X-Openerp-CSRF-Token"] = token; headers["X-CSRFToken"] = token; }
-
-      try {
-        const res = await fetch("/ai_chat/send", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ question: q }),
-          credentials: "same-origin",
-        });
-        const raw = await res.json().catch(() => ({}));
-        const data = unwrap(raw);
-        if (res.ok && data && data.ok) appendMessage("bot", data.reply || "");
-        else appendMessage("bot", (data && data.reply) || "Network error.");
-      } catch (e) {
-        console.error("AI Chat: send failed", e);
-        appendMessage("bot", "Network error.");
-      }
-    }
-    send.addEventListener("click", sendMsg);
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && !ev.shiftKey) {
-        ev.preventDefault(); sendMsg();
-      }
-    });
-
-    (mount || document.body).appendChild(wrap);
-  }
-
-  async function init() {
-    // ask the server if we should show the bubble for this visitor
-    try {
-      const res = await fetch("/ai_chat/can_load", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-        credentials: "same-origin",
-      });
-      const data = unwrap(await res.json());
-      if (data && data.show === true) {
-        const standalone = document.querySelector("#ai-chat-standalone");
-        buildUI(standalone || undefined);
-        console.info("AI Chat: bubble mounted for logged-in user.");
-      } else {
-        console.info("AI Chat: hidden for public user.");
-      }
-    } catch (e) {
-      // fail-closed: if the probe fails, don't show the bubble
-      console.warn("AI Chat: can_load probe failed; bubble not shown.", e);
-    }
-  }
-
-  bodyReady(init);
-})();
-console.log("AI Chat JS (public) loaded");
+.ai-chat-min__msg.user { background: #dbeafe; margin-left: auto; }
+.ai-chat-min__msg.bot  { background: #e5e7eb; margin-right: auto; }
