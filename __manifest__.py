@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 {
     "name": "Website AI Chat (Minimal)",
     "summary": "Minimal AI chat for Website with OpenAI/Gemini, PDF grounding, GDPR-friendly (Odoo 17 CE).",
