@@ -281,7 +281,7 @@ class WebsiteAIChatTestController(http.Controller):
             icp = request.env['ir.config_parameter'].sudo()
             provider = (icp.get_param('website_ai_chat_min.ai_provider') or '').lower()
             api_key = icp.get_param('website_ai_chat_min.ai_api_key')
-            model = icp.get_param('website_ai_chat_min.ai_model') or 'gpt-3.5-turbo'
+            model = icp.get_param('website_ai_chat_min.ai_model')
             system_prompt = icp.get_param('website_ai_chat_min.system_prompt') or ''
 
             # No input? Short-circuit
@@ -314,13 +314,13 @@ class WebsiteAIChatTestController(http.Controller):
                 try:
                     import google.generativeai as genai  # type: ignore
                     genai.configure(api_key=api_key)
-                    model_name = model or "gemini-1.5-flash"
-                    gen_model = genai.GenerativeModel(model_name)
+                    gen_model = genai.GenerativeModel(model)
                     # prompt = (system_prompt + "\n\n" if system_prompt else "") + msg
 
-                    prompt = msg
-                    r = gen_model.generate_content(prompt, request_options={"timeout": 15})
+                    r = gen_model.generate_content(msg, request_options={"timeout": 15})
+
                     reply = (getattr(r, "text", None) or "").strip()
+
                 except Exception as ge:
                     _logger.exception("Gemini call failed")
                     reply = _("(Gemini error) %s") % str(ge)
