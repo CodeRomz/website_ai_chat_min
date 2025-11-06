@@ -1,4 +1,3 @@
-/* website_ai_chat_min/static/src/js/ai_chat.js — login-only, mounts on show:true */
 (() => {
   "use strict";
 
@@ -21,7 +20,7 @@
     const bubble = document.createElement("button");
     bubble.className = "ai-chat-min__bubble";
     bubble.type = "button";
-    bubble.setAttribute("aria-label", "AI Chat");
+    bubble.setAttribute("aria-label", "Academy AI");
     bubble.textContent = "💬";
 
     const panel = document.createElement("div");
