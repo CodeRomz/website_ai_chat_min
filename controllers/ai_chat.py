@@ -11,7 +11,7 @@ import json
 import os
 import time
 import re as re_std
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 try:
     import regex as regex_safe  # type: ignore
@@ -32,6 +32,23 @@ AI_DEFAULT_MAX_TOKENS = 512
 DOCS_DEFAULT_MAX_FILES = 40
 DOCS_DEFAULT_MAX_PAGES = 40
 DOCS_DEFAULT_MAX_HITS = 12
+
+ASSISTANT_JSON_CONTRACT = """
+Return ONLY a JSON object with:
+{
+  "title": string,           // ≤ 60 chars
+  "summary": string,         // ≤ 80 words
+  "answer_md": string,       // Markdown; ≤ 8 bullets OR ≤ 120 words
+  "citations": [             // optional; from provided excerpts
+    {"file": string, "page": integer}
+  ],
+  "suggestions": [string]    // optional; ≤ 3 follow-ups
+}
+Do NOT include text before/after the JSON.
+If documents are insufficient and docs-only is enabled,
+set "summary" to "I don’t know based on the current documents."
+and keep "answer_md" short, asking the user to narrow by document number.
+"""
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -217,14 +234,14 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
                             results.append((fn, idx + 1, snippet))
                             _logger.info("[AIChat] Match: %s (p.%s)", fn, idx + 1)
                             if len(results) >= max_hits:
-                                raise StopIteration  # hard stop overall
+                                raise StopIteration
             except StopIteration:
                 break
             except Exception as e:
                 _logger.warning("[AIChat] Failed to read PDF %s: %s", path, tools.ustr(e))
         else:
             continue
-        break  # stop outer loop if we broke inner due to ceilings
+        break
 
     _logger.info("[AIChat] Scan finished: files_scanned=%s hits=%s scan_ms=%d",
                  files_scanned, len(results), int((time.time() - t0) * 1000))
@@ -265,12 +282,9 @@ def _redact_pii(text: str) -> str:
     try:
         if not text:
             return text
-        # Emails
-        text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)
-        # Phone numbers (very rough)
-        text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)
-        # National IDs (simple tokens of 8-12 alnum)
-        text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)
+        text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)  # emails
+        text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)  # phones (rough)
+        text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)  # simple IDs
         return text
     except Exception:
         return text
@@ -321,6 +335,7 @@ class _OpenAIProvider(_ProviderBase):
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
+                response_format={"type": "json_object"},
             )
             return (resp.choices[0].message.content or "").strip()
         return self._with_retries(_call)
@@ -346,32 +361,32 @@ def _get_provider(cfg: dict) -> _ProviderBase:
     provider = (cfg.get("provider") or "openai").strip().lower()
     if provider == "gemini":
         return _GeminiProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
-    # default
     return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
 
 
 def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]], only_docs: bool) -> str:
-    """
-    System preamble with guardrails and labeled snippets.
-    """
     lines = []
     base = (system_prompt or "").strip()
     if base:
         lines.append(base)
 
-    # Guardrails (explicit & concise)
     if only_docs:
         lines.append(
             "You MUST answer only using the provided excerpts. "
-            "If they don't contain the answer, say: “I don’t know based on the current documents.”"
+            "If they don't contain the answer, say exactly: “I don’t know based on the current documents.”"
         )
     else:
-        lines.append(
-            "Prefer the provided excerpts. If irrelevant or missing, you may answer from general knowledge."
-        )
+        lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
+
+    # Formatting contract (strict/brevity)
+    lines.append(
+        "Formatting: Keep it compact. No more than 8 bullets or 120 words in 'answer_md'. "
+        "Always include a short 'summary'. If many topics appear, ask for the document number/code."
+    )
+    lines.append("OUTPUT FORMAT:\n" + ASSISTANT_JSON_CONTRACT.strip())
 
     if snippets:
-        lines.append("Relevant excerpts (cite in your answer using [File p.X]):")
+        lines.append("Relevant excerpts (cite using [File p.X]):")
         for fn, page, text in snippets:
             lines.append(f"[{fn} p.{page}] {text}")
     return "\n".join(lines)
@@ -395,8 +410,8 @@ class WebsiteAIChatController(http.Controller):
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def send(self, question=None):
         """
-        Main entrypoint: validates, (optionally) retrieves PDF context, composes prompt,
-        calls provider with retries, and returns the text reply.
+        Validates, (optionally) retrieves PDF context, composes prompt,
+        calls provider with retries, and returns a compact, structured reply.
         """
         if not _require_group_if_configured(request.env):
             raise AccessDenied("You do not have access to AI Chat.")
@@ -411,10 +426,8 @@ class WebsiteAIChatController(http.Controller):
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
         try:
-            _logger.info(
-                "[website_ai_chat_min] /ai_chat/send uid=%s len=%s ip=%s",
-                request.env.uid, len(q), _client_ip()
-            )
+            _logger.info("[website_ai_chat_min] /ai_chat/send uid=%s len=%s ip=%s",
+                         request.env.uid, len(q), _client_ip())
         except Exception:
             pass
 
@@ -438,7 +451,14 @@ class WebsiteAIChatController(http.Controller):
 
         if cfg["only_docs"] and not doc_snippets:
             _logger.info("[AIChat] only_docs enabled and no snippets found; scan_ms=%s", scan_ms)
-            return {"ok": True, "reply": _("I don’t know based on the current documents.")}
+            ui = {
+                "title": "",
+                "summary": _("I don’t know based on the current documents."),
+                "answer_md": _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."),
+                "citations": [],
+                "suggestions": [_("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")],
+            }
+            return {"ok": True, "reply": ui["answer_md"], "ui": ui}
 
         # --- Build prompts
         system_text = _build_system_preamble(cfg["system_prompt"], doc_snippets, cfg["only_docs"])
@@ -458,8 +478,41 @@ class WebsiteAIChatController(http.Controller):
             _logger.info("[AIChat] provider=%s model=%s scan_ms=%s ai_ms=%s snippets=%s pii_redacted=%s",
                          cfg["provider"], cfg["model"] or "<default>", scan_ms, ai_ms, len(doc_snippets), bool(cfg["redact_pii"]))
 
-        # --- Post-processing: docs-only enforcement if model returned empty
-        if cfg["only_docs"] and not (reply or "").strip():
-            return {"ok": True, "reply": _("I don’t know based on the current documents.")}
+        # --- Parse structured UI payload (JSON), with graceful fallback
+        ui = {
+            "title": "",
+            "summary": "",
+            "answer_md": (reply or "").strip(),
+            "citations": [],
+            "suggestions": [],
+        }
+        try:
+            parsed = json.loads(reply or "")
+            if isinstance(parsed, dict) and parsed.get("answer_md"):
+                ui.update({
+                    "title": (parsed.get("title") or "")[:120],
+                    "summary": parsed.get("summary") or "",
+                    "answer_md": (parsed.get("answer_md") or "").strip(),
+                    "citations": list(parsed.get("citations") or [])[:8],
+                    "suggestions": list(parsed.get("suggestions") or [])[:3],
+                })
+        except Exception:
+            # not JSON; keep raw text
+            pass
 
-        return {"ok": True, "reply": (reply or _("(No answer returned.)"))}
+        # Heuristic suggestions if context weak/too broad
+        if len(doc_snippets) == 0 or len(doc_snippets) > 8:
+            doc_hint = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
+            if doc_hint not in ui["suggestions"]:
+                ui["suggestions"].append(doc_hint)
+
+        # Ensure citations exist (from retrieval) if model omitted them
+        if not ui["citations"] and doc_snippets:
+            ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
+
+        # Docs-only enforcement if model returned empty
+        if cfg["only_docs"] and not (ui["answer_md"] or "").strip():
+            ui["summary"] = _("I don’t know based on the current documents.")
+            ui["answer_md"] = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
+
+        return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}

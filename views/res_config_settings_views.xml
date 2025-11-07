@@ -2,8 +2,6 @@
     <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.ai.chat</field>
         <field name="model">res.config.settings</field>
-
-        <!-- Keep this inherit for Website settings page -->
         <field name="inherit_id" ref="website.res_config_settings_view_form"/>
 
         <field name="arch" type="xml">
@@ -12,46 +10,65 @@
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-                    <setting string="AI Provider" help="Choose which LLM provider to call from the chat backend.">
+                    <!-- Provider -->
+                    <setting string="AI Provider">
                         <field name="ai_provider"/>
                     </setting>
-
-                    <setting string="Model" help="Exact model name supported by the selected provider.">
+                    <setting string="Model">
                         <field name="ai_model"/>
                     </setting>
-
-                    <setting string="API Key" help="Stored in system parameters; keep secret.">
+                    <setting string="API Key">
                         <field name="ai_api_key" password="True"/>
                     </setting>
-
-                    <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
+                    <setting string="System Prompt">
                         <field name="system_prompt"/>
                     </setting>
-
-                    <setting string="Allowed Questions (regex)"
-                             help="Only allow prompts that match this case-insensitive regex.">
+                    <setting string="Allowed Questions (regex)">
                         <field name="allowed_regex"/>
                     </setting>
-
-                    <setting string="Answer Only From Documents"
-                             help="If enabled, reply only when relevant document snippets are found.">
-                        <field name="answer_only_from_docs"/>
+                    <setting string="Require Group (XMLID)" help="Example: base.group_user">
+                        <field name="require_group_xmlid"/>
                     </setting>
 
-                    <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
+                    <!-- Retrieval -->
+                    <setting string="PDF Folder">
                         <field name="docs_folder"/>
                     </setting>
+                    <setting string="Answer Only From Documents">
+                        <field name="answer_only_from_docs"/>
+                    </setting>
+                    <setting string="Docs: Max Files">
+                        <field name="docs_max_files"/>
+                    </setting>
+                    <setting string="Docs: Max Pages/File">
+                        <field name="docs_max_pages"/>
+                    </setting>
+                    <setting string="Docs: Max Matches">
+                        <field name="docs_max_hits"/>
+                    </setting>
 
-                    <setting string="Privacy Policy URL" help="Optional link shown below the chat box.">
+                    <!-- Inference controls -->
+                    <setting string="AI Timeout (sec)">
+                        <field name="ai_timeout"/>
+                    </setting>
+                    <setting string="AI Temperature">
+                        <field name="ai_temperature"/>
+                    </setting>
+                    <setting string="AI Max Tokens">
+                        <field name="ai_max_tokens"/>
+                    </setting>
+                    <setting string="Redact PII in Prompts">
+                        <field name="redact_pii"/>
+                    </setting>
+
+                    <!-- UX / Legal / Rate limit -->
+                    <setting string="Privacy Policy URL">
                         <field name="privacy_url"/>
                     </setting>
-
-                    <setting string="Rate Limit: Max Requests"
-                             help="Max number of messages a user can send in the time window.">
+                    <setting string="Rate Limit: Max Requests">
                         <field name="rate_limit_max"/>
                     </setting>
-
-                    <setting string="Rate Limit: Window (sec)" help="Duration of the throttle window in seconds.">
+                    <setting string="Rate Limit: Window (sec)">
                         <field name="rate_limit_window"/>
                     </setting>
 
