@@ -62,6 +62,7 @@ class ResConfigSettings(models.TransientModel):
         config_parameter='website_ai_chat_min.rate_limit_max',
         help="Max number of messages a user can send within the time window.",
     )
+
     rate_limit_window = fields.Integer(
         string="Window seconds",
         default=15,
