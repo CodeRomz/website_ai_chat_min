@@ -1,22 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-Production-hardened AI chat controller:
-- Login-only visibility by default; optional group-gated visibility when configured.
-- Clear JSON responses (no AccessDenied exceptions bubbling to the client).
-- CSRF protected /send, robust CSRF headers on the client.
-- Rate limiting per (uid, ip) with safe fallback (deny on error).
-- Optional allow-list regex with timeout (seconds) and compiled-cache.
-- Optional PDF snippets retrieval (bounded) with basic memoization per file page.
-- Provider adapters (OpenAI / Gemini) with retries and JSON-contract parsing.
-
-Environment via ICP (ir.config_parameter) with keys under `website_ai_chat_min.*`
-"""
-
 from odoo import models, fields, api, tools, _
-from odoo.exceptions import (
-    UserError, ValidationError, RedirectWarning, AccessDenied,
-    AccessError, CacheMiss, MissingError
-)
+from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessDenied, AccessError, CacheMiss, MissingError
 import logging
 _logger = logging.getLogger(__name__)
 
@@ -26,510 +9,520 @@ from odoo.http import request
 import json
 import os
 import time
-from typing import Dict, Any, List, Tuple, Optional
+import re as re_std
+from typing import Dict, List, Tuple
 
-# Try faster/safer regex with timeout; fallback to stdlib
 try:
     import regex as regex_safe  # type: ignore
-except Exception:  # pragma: no cover
+except Exception:
     regex_safe = None
 
-import re as re_std
-
-# -----------------------------
-# Tunables (override with ICP)
-# -----------------------------
+# ---- Defaults / tunables (overridable via ICP) -------------------------------
 DEFAULT_RATE_LIMIT_MAX = 5
-DEFAULT_RATE_LIMIT_WINDOW = 15  # seconds
+DEFAULT_RATE_LIMIT_WINDOW = 15
 
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 
+AI_DEFAULT_TIMEOUT = 15
 AI_DEFAULT_TEMPERATURE = 0.2
-AI_DEFAULT_TIMEOUT = 20  # seconds
 AI_DEFAULT_MAX_TOKENS = 512
 
-DOC_MAX_FILES = 30
-DOC_MAX_PAGES_PER_FILE = 16
-DOC_MAX_HITS = 12
+DOCS_DEFAULT_MAX_FILES = 40
+DOCS_DEFAULT_MAX_PAGES = 40
+DOCS_DEFAULT_MAX_HITS = 12
 
-# -----------------------------
-# Helpers: ICP and coercers
-# -----------------------------
+ASSISTANT_JSON_CONTRACT = """
+Return ONLY a JSON object with:
+{
+  "title": string,           // ≤ 60 chars
+  "summary": string,         // ≤ 80 words
+  "answer_md": string,       // Markdown; ≤ 8 bullets OR ≤ 120 words
+  "citations": [             // optional; from provided excerpts
+    {"file": string, "page": integer}
+  ],
+  "suggestions": [string]    // optional; ≤ 3 follow-ups
+}
+Do NOT include text before/after the JSON.
+If documents are insufficient and docs-only is enabled,
+set "summary" to "I don’t know based on the current documents."
+and keep "answer_md" short, asking the user to narrow by document number.
+"""
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 def _icp():
     return request.env["ir.config_parameter"].sudo()
 
-def _get_icp_param(name: str, default: str = "") -> str:
+
+def _get_icp_param(name, default=""):
     try:
-        return _icp().get_param(name, default) or default
+        val = _icp().get_param(name, default)
+        return val if val not in (None, "") else default
     except Exception as e:
-        _logger.warning("ICP read failed for %s: %s", name, tools.ustr(e))
+        _logger.warning("ICP get_param failed for %s: %s", name, tools.ustr(e))
         return default
 
-def _bool_icp(name: str, default: bool = False) -> bool:
-    val = _get_icp_param(name, "")
-    return default if val == "" else val.strip().lower() in ("1", "true", "yes", "on")
 
-def _int_icp(name: str, default: int) -> int:
+def _is_logged_in(env):
     try:
-        return int(_get_icp_param(name, str(default)))
-    except Exception:
-        return default
-
-def _float_icp(name: str, default: float) -> float:
-    try:
-        return float(_get_icp_param(name, str(default)))
-    except Exception:
-        return default
-
-# -----------------------------
-# Authz & visibility
-# -----------------------------
-def _is_logged_in(env) -> bool:
-    try:
-        return not (env.user._is_public())
+        return bool(env.user and not env.user._is_public())
     except Exception:
         return False
 
-def _user_has_required_group(env) -> bool:
-    """If require_group_xmlid is configured, user must be in that group."""
+
+def _require_group_if_configured(env) -> bool:
+    """Gate used for /ai_chat/send (NOT for bubble visibility)."""
     xmlid = _get_icp_param("website_ai_chat_min.require_group_xmlid", "")
     if not xmlid:
         return True
     try:
-        grp = env.ref(xmlid)
+        return env.user.has_group(xmlid)
     except Exception:
-        _logger.error("Configured group xmlid %s not found; denying.", xmlid)
+        # If XMLID is wrong, deny send (safe default).
         return False
-    try:
-        return grp in env.user.groups_id
-    except Exception:
-        return False
+
 
 def _can_show_widget(env) -> bool:
-    """By default: show to logged-in users.
-       If group xmlid is configured, require that group for visibility as well."""
-    if not _is_logged_in(env):
-        return False
-    if _get_icp_param("website_ai_chat_min.require_group_xmlid", ""):
-        return _user_has_required_group(env)
-    return True
+    """
+    Bubble visibility rule:
+    - Show for LOGGED-IN users only (no group check here).
+    - Public users will not see the bubble.
+    """
+    return _is_logged_in(env)
 
-# -----------------------------
-# Abuse controls
-# -----------------------------
-def _client_ip() -> str:
-    # Honor reverse proxy headers (ensure Nginx sets X-Forwarded-For)
+
+def _get_rate_limits():
     try:
-        xff = request.httprequest.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0].strip()
-        return request.httprequest.remote_addr or "0.0.0.0"
+        max_req = int(_get_icp_param("website_ai_chat_min.rate_limit_max", DEFAULT_RATE_LIMIT_MAX))
+    except Exception:
+        max_req = DEFAULT_RATE_LIMIT_MAX
+    try:
+        window = int(_get_icp_param("website_ai_chat_min.rate_limit_window", DEFAULT_RATE_LIMIT_WINDOW))
+    except Exception:
+        window = DEFAULT_RATE_LIMIT_WINDOW
+    return max(1, max_req), max(1, window)
+
+
+def _client_ip():
+    try:
+        xfwd = request.httprequest.headers.get("X-Forwarded-For", "")
+        ip = (xfwd.split(",")[0].strip() if xfwd else request.httprequest.remote_addr) or "0.0.0.0"
+        return ip
     except Exception:
         return "0.0.0.0"
 
-def _get_rate_limits() -> Tuple[int, int]:
-    max_req = _int_icp("website_ai_chat_min.rate_limit_max", DEFAULT_RATE_LIMIT_MAX)
-    window = _int_icp("website_ai_chat_min.rate_limit_window", DEFAULT_RATE_LIMIT_WINDOW)
-    return max(1, max_req), max(1, window)
 
 def _throttle() -> bool:
-    """Return True if allowed, False if rate-limited or error."""
+    """Simple per-session/IP sliding-window throttle."""
     try:
         max_req, window = _get_rate_limits()
-        now = int(time.time())
-        uid = request.env.user.id or 0
+        now = time.time()
+        user_id = request.env.uid or 0
         ip = _client_ip()
-        key = f"ai_chat_rl::{uid}::{ip}"
-        sess = request.session
-        stamps = sess.get(key, [])
-        stamps = [t for t in stamps if (now - t) < window]
-        if len(stamps) >= max_req:
-            sess[key] = stamps  # persist cleanup
-            return False
-        stamps.append(now)
-        sess[key] = stamps
-        return True
+        key = f"website_ai_chat_min_rl:{user_id}:{ip}"
+        hist = request.session.get(key, [])
+        hist = [t for t in hist if now - t < window]
+        allowed = len(hist) < max_req
+        if allowed:
+            hist.append(now)
+            if len(hist) > max_req:
+                hist = hist[-max_req:]
+            request.session[key] = hist
+            request.session.modified = True
+        return allowed
     except Exception as e:
-        # Safer default: deny on internal error to avoid abuse
-        _logger.error("Throttle error: %s", tools.ustr(e), exc_info=True)
-        return False
+        _logger.warning("Throttle error: %s", tools.ustr(e))
+        return True
 
-# -----------------------------
-# Input normalization / allow-list
-# -----------------------------
-def _normalize_message_from_request() -> str:
-    """Accepts {question} or JSON-RPC {params:{question}}."""
+
+def _normalize_message_from_request(question_param=None) -> str:
+    msg = (question_param or "").strip()
+    if msg:
+        return msg
     try:
-        data = request.jsonrequest or {}
-        if "question" in data:
-            return (data.get("question") or "").strip()
-        if "params" in data and isinstance(data["params"], dict):
-            return (data["params"].get("question") or "").strip()
+        raw = request.httprequest.get_data(cache=False, as_text=True)
+        if raw:
+            payload = json.loads(raw)
+            if isinstance(payload, dict):
+                params = payload.get("params")
+                if isinstance(params, dict):
+                    msg = (params.get("message") or params.get("question") or "").strip()
+                    if msg:
+                        return msg
+                msg = (payload.get("message") or payload.get("question") or "").strip()
+                if msg:
+                    return msg
     except Exception:
         pass
     return ""
 
-_ALLOWED_CACHE: Dict[str, Any] = {}
 
-def _match_allowed(pattern: str, text: str, timeout_s: float = 0.06) -> bool:
-    """Return True if allowed (either no pattern or it matches).
-       regex_safe.timeout expects seconds. Cache compiled patterns."""
+def _match_allowed(pattern: str, text: str, timeout_ms=60) -> bool:
+    """Allow-list regex with timeout to resist ReDoS."""
     if not pattern:
         return True
     try:
         if regex_safe:
-            compiled = _ALLOWED_CACHE.get(pattern)
-            if not compiled:
-                compiled = regex_safe.compile(pattern, flags=regex_safe.I | regex_safe.M)
-                _ALLOWED_CACHE[pattern] = compiled
-            return bool(compiled.search(text, timeout=timeout_s))
+            return bool(regex_safe.search(pattern, text, flags=regex_safe.I | regex_safe.M, timeout=timeout_ms))
         return bool(re_std.search(pattern, text, flags=re_std.I | re_std.M))
     except Exception as e:
-        _logger.warning("allowed_regex error: %s", tools.ustr(e))
+        _logger.warning("Invalid allowed_regex or match error: %s", tools.ustr(e))
         return False
 
-# -----------------------------
-# Optional PII redaction (outbound prompt)
-# -----------------------------
-def _redact_pii(text: str) -> Tuple[str, int]:
-    if not text:
-        return text, 0
-    n = 0
-    def subn(pat, repl, s, flags=0):
-        nonlocal n
-        s2, c = re_std.subn(pat, repl, s, flags=flags)
-        n += c
-        return s2
-    red = text
-    red = subn(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[email]", red)
-    red = subn(r"(?<!\d)(\+?\d[\d \-]{7,}\d)", "[phone]", red)
-    red = subn(r"\b([A-Z0-9]{8,})\b", "[id]", red)
-    return red, n
 
-# -----------------------------
-# PDF retrieval (bounded) with tiny memo for page text
-# -----------------------------
-_PDF_PAGE_MEMO: Dict[Tuple[str, int], str] = {}
-_PDF_MEMO_MAX = 1024  # simple cap
+def _bool_icp(key: str, default: bool = False) -> bool:
+    return tools.str2bool(_get_icp_param(key, "1" if default else "0"))
 
-def _memo_put_pdf_page(key: Tuple[str, int], val: str):
-    if len(_PDF_PAGE_MEMO) >= _PDF_MEMO_MAX:
-        # pop an arbitrary (FIFO-like) item to keep memory bounded
-        _PDF_PAGE_MEMO.pop(next(iter(_PDF_PAGE_MEMO)))
-    _PDF_PAGE_MEMO[key] = val
 
-def _extract_pdf_page_text(filepath: str, page_idx: int) -> str:
-    """Extract text for (file, page_idx). Uses a basic memo."""
-    memo_key = (filepath, page_idx)
-    if memo_key in _PDF_PAGE_MEMO:
-        return _PDF_PAGE_MEMO[memo_key]
+def _int_icp(key: str, default: int) -> int:
     try:
-        try:
-            from pypdf import PdfReader  # type: ignore
-        except Exception:
-            _logger.warning("pypdf not installed; cannot scan PDFs")
-            return ""
-        reader = PdfReader(filepath)
-        if page_idx < 0 or page_idx >= len(reader.pages):
-            return ""
-        txt = reader.pages[page_idx].extract_text() or ""
-        _memo_put_pdf_page(memo_key, txt)
-        return txt
-    except Exception as e:
-        _logger.warning("PDF read failed %s p%d: %s", filepath, page_idx, tools.ustr(e))
-        return ""
+        return int(_get_icp_param(key, default))
+    except Exception:
+        return default
 
-def _read_pdf_snippets(root_folder: str, query: str) -> List[Dict[str, Any]]:
-    """Linear, bounded search for pages containing the query (case-insensitive)."""
-    results: List[Dict[str, Any]] = []
-    if not root_folder or not query:
+
+def _float_icp(key: str, default: float) -> float:
+    try:
+        return float(_get_icp_param(key, default))
+    except Exception:
+        return default
+
+
+def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str]]:
+    """
+    Return list of (filename, page_index_1based, snippet_text).
+    Walks subfolders; stops after ICP thresholds; logs progress.
+    """
+    t0 = time.time()
+    try:
+        import pypdf
+    except Exception as e:
+        _logger.warning("pypdf not installed: %s", tools.ustr(e))
+        return []
+
+    max_files = _int_icp("website_ai_chat_min.docs_max_files", DOCS_DEFAULT_MAX_FILES)
+    max_pages = _int_icp("website_ai_chat_min.docs_max_pages", DOCS_DEFAULT_MAX_PAGES)
+    max_hits = _int_icp("website_ai_chat_min.docs_max_hits", DOCS_DEFAULT_MAX_HITS)
+
+    results: List[Tuple[str, int, str]] = []
+    ql = (query or "").lower()
+
+    if not root_folder or not os.path.exists(root_folder):
+        _logger.warning("Document folder not found or empty: %s", root_folder)
         return results
-    q = query.strip()
-    if not os.path.isdir(root_folder):
-        _logger.info("docs_folder not a dir: %s", root_folder)
-        return results
-    # Walk files (bounded)
-    n_files = 0
-    for root, _dirs, files in os.walk(root_folder):
-        for fn in files:
+
+    _logger.info("[AIChat] Scanning folder=%s query=%r (limits: files=%s pages=%s hits=%s)",
+                 root_folder, query, max_files, max_pages, max_hits)
+
+    files_scanned = 0
+    for dirpath, _, filenames in os.walk(root_folder):
+        for fn in filenames:
             if not fn.lower().endswith(".pdf"):
                 continue
-            filepath = os.path.join(root, fn)
-            n_files += 1
-            if n_files > DOC_MAX_FILES:
-                return results
-            # Per file, scan first pages (bounded)
+            path = os.path.join(dirpath, fn)
+            files_scanned += 1
+            if files_scanned > max_files:
+                _logger.info("[AIChat] File ceiling reached at %s files", max_files)
+                break
             try:
-                try:
-                    from pypdf import PdfReader  # type: ignore
-                except Exception:
-                    _logger.warning("pypdf not installed; cannot scan PDFs")
-                    return results
-                reader = PdfReader(filepath)
-                page_count = min(len(reader.pages), DOC_MAX_PAGES_PER_FILE)
-                for page_idx in range(page_count):
-                    if len(results) >= DOC_MAX_HITS:
-                        return results
-                    text = _extract_pdf_page_text(filepath, page_idx)
-                    if not text:
-                        continue
-                    if q.lower() in text.lower():
-                        # capture small snippet (first occurrence line-ish)
-                        snippet = text.strip().splitlines()
-                        if snippet:
-                            snippet = snippet[0][:320]
-                        else:
-                            snippet = ""
-                        results.append({
-                            "file": fn,
-                            "page": page_idx + 1,  # 1-based
-                            "snippet": snippet,
-                        })
+                with open(path, "rb") as f:
+                    reader = pypdf.PdfReader(f)
+                    page_count = min(len(reader.pages), max_pages)
+                    for idx in range(page_count):
+                        page = reader.pages[idx]
+                        text = (page.extract_text() or "").strip()
+                        if not text:
+                            continue
+                        if ql in text.lower():
+                            snippet = text[:1200].replace("\n", " ")
+                            results.append((fn, idx + 1, snippet))
+                            _logger.info("[AIChat] Match: %s (p.%s)", fn, idx + 1)
+                            if len(results) >= max_hits:
+                                raise StopIteration
+            except StopIteration:
+                break
             except Exception as e:
-                _logger.debug("PDF scan error on %s: %s", filepath, tools.ustr(e))
+                _logger.warning("[AIChat] Failed to read PDF %s: %s", path, tools.ustr(e))
+        else:
+            continue
+        break
+
+    _logger.info("[AIChat] Scan finished: files_scanned=%s hits=%s scan_ms=%d",
+                 files_scanned, len(results), int((time.time() - t0) * 1000))
     return results
 
-# -----------------------------
-# Provider adapters (with retries)
-# -----------------------------
-def _call_openai(system_text: str, user_text: str, model: str, temperature: float, timeout_s: int, max_tokens: int) -> str:
-    try:
-        from openai import OpenAI  # type: ignore
-    except Exception:
-        _logger.error("openai python client not installed")
-        raise
+
+def _get_ai_config():
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
-    if not api_key:
-        raise UserError(_("OpenAI API key is missing"))
-    client = OpenAI(api_key=api_key)
-    last_err = None
-    for _ in range(3):
-        try:
+    model = _get_icp_param("website_ai_chat_min.ai_model", "")
+    system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
+    allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
+    docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
+    only_docs = _bool_icp("website_ai_chat_min.answer_only_from_docs", False)
+
+    timeout = _int_icp("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT)
+    temperature = _float_icp("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE)
+    max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
+    redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
+
+    return {
+        "provider": provider,
+        "api_key": api_key,
+        "model": model,
+        "system_prompt": system_prompt,
+        "allowed_regex": allowed_regex,
+        "docs_folder": docs_folder,
+        "only_docs": only_docs,
+        "timeout": timeout,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "redact_pii": redact_pii,
+    }
+
+
+def _redact_pii(text: str) -> str:
+    """Minimal PII masking; configurable on/off."""
+    try:
+        if not text:
+            return text
+        # Emails
+        text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)
+        # Phone numbers (rough)
+        text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)
+        # National/simple IDs
+        text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)
+        return text
+    except Exception:
+        return text
+
+
+# -----------------------------------------------------------------------------
+# Provider adapters
+# -----------------------------------------------------------------------------
+class _ProviderBase:
+    def __init__(self, api_key: str, model: str, timeout: int, temperature: float, max_tokens: int):
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+
+    def generate(self, system_text: str, user_text: str) -> str:
+        raise NotImplementedError
+
+    def _with_retries(self, fn):
+        delays = [0.5, 1.0]
+        last_exc = None
+        for i in range(len(delays) + 1):
+            try:
+                return fn()
+            except Exception as e:
+                last_exc = e
+                if i < len(delays):
+                    time.sleep(delays[i])
+                else:
+                    break
+        if last_exc:
+            raise last_exc
+        return ""
+
+
+class _OpenAIProvider(_ProviderBase):
+    def generate(self, system_text: str, user_text: str) -> str:
+        def _call():
+            from openai import OpenAI  # type: ignore
+            client = OpenAI(api_key=self.api_key, timeout=self.timeout)
+            messages = []
+            if system_text:
+                messages.append({"role": "system", "content": system_text})
+            messages.append({"role": "user", "content": user_text})
             resp = client.chat.completions.create(
-                model=model or OPENAI_DEFAULT_MODEL,
-                temperature=temperature,
-                timeout=timeout_s,
-                max_tokens=max_tokens,
+                model=(self.model or OPENAI_DEFAULT_MODEL),
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
                 response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_text},
-                    {"role": "user", "content": user_text},
-                ],
             )
             return (resp.choices[0].message.content or "").strip()
-        except Exception as e:
-            last_err = e
-            time.sleep(0.5)
-    raise last_err or Exception("OpenAI call failed")
+        return self._with_retries(_call)
 
-def _call_gemini(system_text: str, user_text: str, model: str, temperature: float, timeout_s: int, max_tokens: int) -> str:
-    try:
-        import google.generativeai as genai  # type: ignore
-    except Exception:
-        _logger.error("google.generativeai not installed")
-        raise
-    api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
-    if not api_key:
-        raise UserError(_("Gemini API key is missing"))
-    genai.configure(api_key=api_key)
-    last_err = None
-    for _ in range(3):
-        try:
-            gen_model = genai.GenerativeModel(model or GEMINI_DEFAULT_MODEL)
-            prompt = f"{system_text}\n\nUser:\n{user_text}"
-            resp = gen_model.generate_content(prompt, generation_config={
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-                # Note: official timeouts may be enforced by HTTP layer
-            })
-            # Gemini may put JSON in the text field
-            txt = (resp.text or "").strip()
-            return txt
-        except Exception as e:
-            last_err = e
-            time.sleep(0.5)
-    raise last_err or Exception("Gemini call failed")
 
-# -----------------------------
-# System prompt / output contract
-# -----------------------------
-def _build_system_preamble(only_docs: bool, snippets: List[Dict[str, Any]]) -> str:
-    base = _get_icp_param("website_ai_chat_min.system_prompt",
-                          "You are a precise assistant. Always return compact JSON.")
-    pieces = [base.strip()]
+class _GeminiProvider(_ProviderBase):
+    def generate(self, system_text: str, user_text: str) -> str:
+        def _call():
+            import google.generativeai as genai  # type: ignore
+            genai.configure(api_key=self.api_key)
+            model_name = self.model or GEMINI_DEFAULT_MODEL
+            prompt = (system_text + "\n\n" if system_text else "") + (user_text or "")
+            r = genai.GenerativeModel(model_name).generate_content(
+                [prompt],
+                request_options={"timeout": self.timeout},
+                generation_config={"temperature": self.temperature, "max_output_tokens": self.max_tokens},
+            )
+            return (getattr(r, "text", None) or "").strip()
+        return self._with_retries(_call)
+
+
+def _get_provider(cfg: dict) -> _ProviderBase:
+    provider = (cfg.get("provider") or "openai").strip().lower()
+    if provider == "gemini":
+        return _GeminiProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
+    return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
+
+
+def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]], only_docs: bool) -> str:
+    lines = []
+    base = (system_prompt or "").strip()
+    if base:
+        lines.append(base)
+
     if only_docs:
-        pieces.append("You must answer only using the provided document excerpts. "
-                      "If not possible, return an empty answer.")
-    pieces.append("Output JSON object with keys: title (str), summary (str), "
-                  "answer_md (str), citations (list of {file,page}), suggestions (list of str).")
+        lines.append(
+            "You MUST answer only using the provided excerpts. "
+            "If they don't contain the answer, say exactly: “I don’t know based on the current documents.”"
+        )
+    else:
+        lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
+
+    # Formatting contract (strict/brevity)
+    lines.append(
+        "Formatting: Keep it compact. No more than 8 bullets or 120 words in 'answer_md'. "
+        "Always include a short 'summary'. If many topics appear, ask for the document number/code."
+    )
+    lines.append("OUTPUT FORMAT:\n" + ASSISTANT_JSON_CONTRACT.strip())
+
     if snippets:
-        pieces.append("Document excerpts:")
-        for s in snippets:
-            pieces.append(f"[{s.get('file','doc')} p.{s.get('page','?')}] {s.get('snippet','')}")
-    return "\n".join(pieces)
+        lines.append("Relevant excerpts (cite using [File p.X]):")
+        for fn, page, text in snippets:
+            lines.append(f"[{fn} p.{page}] {text}")
+    return "\n".join(lines)
 
-def _strip_json_fences(s: str) -> str:
-    if not s:
-        return s
-    st = s.strip()
-    if st.startswith("```"):
-        st = st.strip("` \n\r\t")
-        # remove possible "json" first line
-        if "\n" in st:
-            first, rest = st.split("\n", 1)
-            if first.strip().lower() in ("json", "javascript"):
-                return rest.strip()
-        return st
-    return st
 
-# -----------------------------
+# -----------------------------------------------------------------------------
 # HTTP Controller
-# -----------------------------
-class WebsiteAIChatMinController(http.Controller):
+# -----------------------------------------------------------------------------
+class WebsiteAIChatController(http.Controller):
 
     @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
-    def can_load(self, **_kwargs):
-        """Probe for whether the widget should show for this session."""
+    def can_load(self):
         try:
             show = _can_show_widget(request.env)
+            _logger.info("[website_ai_chat_min] can_load show=%s", show)
             return {"show": bool(show)}
         except Exception as e:
-            _logger.warning("can_load error: %s", tools.ustr(e))
+            _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
             return {"show": False}
 
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
-    def send(self, **_kwargs):
-        """Main chat endpoint. Always returns a JSON (no exception to client)."""
-        t0 = time.time()
-        # Visibility/permission check (server-side gate)
-        if not _user_has_required_group(request.env):
-            return {"ok": False, "reply": _("You are not allowed to use this assistant.")}
+    def send(self, question=None):
+        """
+        Validates, (optionally) retrieves PDF context, composes prompt,
+        calls provider with retries, and returns a compact, structured reply.
+        """
+        # GROUP GATE APPLIES TO SENDING (not to bubble visibility)
+        if not _require_group_if_configured(request.env):
+            raise AccessDenied("You do not have access to AI Chat.")
 
-        # Rate limit
         if not _throttle():
-            return {"ok": False, "reply": _("You are sending messages too quickly. Please wait a moment."), "code": "E-RL"}
+            return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
 
-        # Normalize input
-        question = _normalize_message_from_request()
-        if not question:
-            return {"ok": False, "reply": _("Please type your question."), "code": "E-EMPTY"}
+        q = _normalize_message_from_request(question_param=question)
+        if not q:
+            return {"ok": False, "reply": _("Please enter a question.")}
+        if len(q) > 4000:
+            return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
-        # Load config
-        provider = (_get_icp_param("website_ai_chat_min.ai_provider", "openai") or "openai").lower()
-        api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
-        model = _get_icp_param("website_ai_chat_min.ai_model",
-                               OPENAI_DEFAULT_MODEL if provider == "openai" else GEMINI_DEFAULT_MODEL)
-        allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
-        docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "").strip()
-        only_docs = _bool_icp("website_ai_chat_min.answer_only_from_docs", False)
-        redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
-
-        ai_temperature = _float_icp("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE)
-        ai_timeout_s = _int_icp("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT)
-        ai_max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
-
-        if not api_key:
-            return {"ok": False, "reply": _("Assistant is not configured. (Missing API key)"), "code": "E-CONFIG"}
-
-        # Allow-list scope check
-        if allowed_regex and not _match_allowed(allowed_regex, question, timeout_s=0.06):
-            return {
-                "ok": False,
-                "reply": _("Your question doesn't match the allowed scope."),
-                "code": "E-SCOPE",
-            }
-
-        # Optional PII redaction (outbound prompt only)
-        outbound_q = question
-        redactions = 0
-        if redact_pii:
-            outbound_q, redactions = _redact_pii(question)
-
-        # Optional retrieval from PDFs (bounded)
-        snippets: List[Dict[str, Any]] = []
-        if docs_folder:
-            t_pdf = time.time()
-            snippets = _read_pdf_snippets(docs_folder, outbound_q)
-            _logger.info("PDF scan hits=%s ms=%d", len(snippets), int((time.time() - t_pdf) * 1000))
-
-        # Strict “only from docs” guard: if required but no snippets → guided reply
-        if only_docs and not snippets:
-            ui = {
-                "title": _("No matching documents found"),
-                "summary": _("I can only answer from the configured documents."),
-                "answer_md": _("Please include the document number/code or a more specific keyword."),
-                "citations": [],
-                "suggestions": [
-                    _("Search by document number (e.g., INV-2024-00123)"),
-                    _("Search by product code (e.g., ABC-123)"),
-                ],
-            }
-            return {"ok": True, "reply": ui["summary"], "ui": ui}
-
-        # Build system + call provider
-        system_text = _build_system_preamble(only_docs, snippets)
         try:
-            if provider == "openai":
-                raw = _call_openai(system_text, outbound_q, model, ai_temperature, ai_timeout_s, ai_max_tokens)
-            elif provider == "gemini":
-                raw = _call_gemini(system_text, outbound_q, model, ai_temperature, ai_timeout_s, ai_max_tokens)
-            else:
-                return {"ok": False, "reply": _("Unsupported provider."), "code": "E-PROV"}
-        except Exception as e:
-            _logger.error("Provider call error: %s", tools.ustr(e), exc_info=True)
-            return {"ok": False, "reply": _("The assistant is temporarily unavailable. Please try again."), "code": "E-AI"}
+            _logger.info("[website_ai_chat_min] /ai_chat/send uid=%s len=%s ip=%s",
+                         request.env.uid, len(q), _client_ip())
+        except Exception:
+            pass
 
-        # Parse JSON contract (with fence stripping)
-        ui: Dict[str, Any] = {
+        # --- Load configuration
+        cfg = _get_ai_config()
+        if not cfg["api_key"]:
+            return {"ok": False, "reply": _("AI provider API key is not configured. Please contact the administrator.")}
+
+        if cfg["allowed_regex"] and not _match_allowed(cfg["allowed_regex"], q):
+            return {"ok": False, "reply": _("Your question is not within the allowed scope.")}
+
+        # --- Redact PII if configured (for outbound prompt only)
+        outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
+
+        # --- Document retrieval
+        doc_snippets: List[Tuple[str, int, str]] = []
+        t_scan0 = time.time()
+        if cfg["docs_folder"] and os.path.isdir(cfg["docs_folder"]):
+            doc_snippets = _read_pdf_snippets(cfg["docs_folder"], q)
+        scan_ms = int((time.time() - t_scan0) * 1000)
+
+        if cfg["only_docs"] and not doc_snippets:
+            _logger.info("[AIChat] only_docs enabled and no snippets found; scan_ms=%s", scan_ms)
+            ui = {
+                "title": "",
+                "summary": _("I don’t know based on the current documents."),
+                "answer_md": _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."),
+                "citations": [],
+                "suggestions": [_("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")],
+            }
+            return {"ok": True, "reply": ui["answer_md"], "ui": ui}
+
+        # --- Build prompts
+        system_text = _build_system_preamble(cfg["system_prompt"], doc_snippets, cfg["only_docs"])
+        user_text = outbound_q
+
+        # --- Call provider
+        provider = _get_provider(cfg)
+        t_ai0 = time.time()
+        try:
+            reply = provider.generate(system_text, user_text)
+        except Exception as e:
+            _logger.error("[AIChat] Provider error (%s/%s): %s",
+                          cfg["provider"], cfg["model"] or "<default>", tools.ustr(e), exc_info=True)
+            return {"ok": False, "reply": _("The AI service is temporarily unavailable. Please try again shortly.")}
+        finally:
+            ai_ms = int((time.time() - t_ai0) * 1000)
+            _logger.info("[AIChat] provider=%s model=%s scan_ms=%s ai_ms=%s snippets=%s pii_redacted=%s",
+                         cfg["provider"], cfg["model"] or "<default>", scan_ms, ai_ms, len(doc_snippets), bool(cfg["redact_pii"]))
+
+        # --- Parse structured UI payload (JSON), with graceful fallback
+        ui = {
             "title": "",
             "summary": "",
-            "answer_md": "",
+            "answer_md": (reply or "").strip(),
             "citations": [],
             "suggestions": [],
         }
-        parsed_ok = False
         try:
-            cleaned = _strip_json_fences(raw)
-            maybe = json.loads(cleaned)
-            if isinstance(maybe, dict):
-                ui.update({k: v for k, v in maybe.items() if k in ui})
-                parsed_ok = True
+            parsed = json.loads(reply or "")
+            if isinstance(parsed, dict) and parsed.get("answer_md"):
+                ui.update({
+                    "title": (parsed.get("title") or "")[:120],
+                    "summary": parsed.get("summary") or "",
+                    "answer_md": (parsed.get("answer_md") or "").strip(),
+                    "citations": list(parsed.get("citations") or [])[:8],
+                    "suggestions": list(parsed.get("suggestions") or [])[:3],
+                })
         except Exception:
-            parsed_ok = False
+            # not JSON; keep raw text
+            pass
 
-        # Fallback: treat raw as plain answer text
-        if not parsed_ok:
-            ui["answer_md"] = (raw or "").strip()
+        # Heuristic suggestions if context weak/too broad
+        if len(doc_snippets) == 0 or len(doc_snippets) > 8:
+            doc_hint = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
+            if doc_hint not in ui["suggestions"]:
+                ui["suggestions"].append(doc_hint)
 
-        # If model omitted citations but we have retrieval hits, add as "related sources"
-        if not ui.get("citations") and snippets:
-            cites = []
-            for s in snippets[:5]:
-                cites.append({"file": s.get("file"), "page": s.get("page")})
-            ui["citations"] = cites
+        # Ensure citations exist (from retrieval) if model omitted them
+        if not ui["citations"] and doc_snippets:
+            ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
 
-        # Enforce only_docs: require at least one citation; else guide the user
-        if only_docs and not ui.get("citations"):
-            ui.update({
-                "title": _("I don’t know based on the current documents."),
-                "summary": _("Please include the document number/code or try a different keyword."),
-                "answer_md": "",
-                "suggestions": [
-                    _("Search by document number (e.g., INV-2024-00123)"),
-                    _("Search by product code (e.g., ABC-123)"),
-                ]
-            })
+        # Docs-only enforcement if model returned empty
+        if cfg["only_docs"] and not (ui["answer_md"] or "").strip():
+            ui["summary"] = _("I don’t know based on the current documents.")
+            ui["answer_md"] = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
 
-        # Small heuristic suggestions
-        if not ui.get("suggestions"):
-            ui["suggestions"] = [
-                _("Summarize this policy’s key points"),
-                _("Where is this referenced in the docs?"),
-            ]
-
-        # Return final
-        ms = int((time.time() - t0) * 1000)
-        _logger.info("ai_chat ok=%s ms=%d provider=%s model=%s redactions=%d",
-                     True, ms, provider, model, redactions)
-        return {"ok": True, "reply": ui.get("summary") or ui.get("answer_md"), "ui": ui}
+        return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
