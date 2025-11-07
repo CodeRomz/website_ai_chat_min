@@ -4,6 +4,7 @@ from odoo.exceptions import (
     AccessError, CacheMiss, MissingError
 )
 import logging
+
 _logger = logging.getLogger(__name__)
 
 from odoo import http
@@ -23,6 +24,7 @@ DEFAULT_RATE_LIMIT_MAX = 5
 DEFAULT_RATE_LIMIT_WINDOW = 15
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+
 
 # ----------------------------------------------------------------------------
 # Helpers
@@ -150,21 +152,38 @@ def _read_pdf_snippets(root_folder: str, query: str) -> dict:
 
     result = {}
     ql = query.lower()
+
+    if not os.path.exists(root_folder):
+        _logger.warning("Document folder not found: %s", root_folder)
+        return result
+
+    _logger.info("Scanning folder: %s for query: '%s'", root_folder, query)
+
     for dirpath, _, filenames in os.walk(root_folder):
+        _logger.debug("Checking subdirectory: %s", dirpath)
         for fn in filenames:
             if not fn.lower().endswith(".pdf"):
                 continue
             path = os.path.join(dirpath, fn)
+            _logger.debug("Attempting to read file: %s", path)
             try:
                 with open(path, "rb") as f:
                     reader = pypdf.PdfReader(f)
-                    for page in reader.pages:
+                    for page_num, page in enumerate(reader.pages):
                         text = (page.extract_text() or "").strip()
                         if ql in text.lower():
-                            result[fn] = text[:1000].replace("\n", " ")
+                            snippet = text[:1000].replace("\n", " ")
+                            result[fn] = snippet
+                            _logger.info("Match found in %s (page %s)", fn, page_num + 1)
                             break
             except Exception as e:
-                _logger.warning("Error reading PDF %s: %s", path, tools.ustr(e))
+                _logger.warning("Failed to read PDF %s: %s", path, tools.ustr(e))
+
+    if not result:
+        _logger.info("No documents matched for query: '%s'", query)
+    else:
+        _logger.info("%d documents matched for query.", len(result))
+
     return result
 
 
@@ -235,14 +254,16 @@ class WebsiteAIChatController(http.Controller):
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
         try:
-            _logger.info("[website_ai_chat_min] /ai_chat/send uid=%s len=%s ip=%s", request.env.uid, len(q), _client_ip())
+            _logger.info("[website_ai_chat_min] /ai_chat/send uid=%s len=%s ip=%s", request.env.uid, len(q),
+                         _client_ip())
         except Exception:
             pass
 
         try:
             provider, api_key, model, system_prompt, allowed_regex, docs_folder, only_docs = _get_ai_config()
             if not api_key:
-                return {"ok": False, "reply": _("AI provider API key is not configured. Please contact the administrator.")}
+                return {"ok": False,
+                        "reply": _("AI provider API key is not configured. Please contact the administrator.")}
 
             if allowed_regex and not _match_allowed(allowed_regex, q):
                 return {"ok": False, "reply": _("Your question is not within the allowed scope.")}
