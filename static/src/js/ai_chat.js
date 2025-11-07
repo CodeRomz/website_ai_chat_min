@@ -21,7 +21,19 @@
     bubble.className = "ai-chat-min__bubble";
     bubble.type = "button";
     bubble.setAttribute("aria-label", "Academy Ai");
-    bubble.textContent = "💬";
+
+    // Use your logo instead of the emoji
+    const icon = new Image();
+    icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
+    icon.alt = "";                // decorative (button already has aria-label)
+    icon.width = 45;              // bubble is 56x56
+    icon.height = 45;
+    icon.decoding = "async";
+    icon.style.display = "block";
+    icon.style.pointerEvents = "none";
+    // graceful fallback if image fails to load
+    icon.addEventListener("error", () => { bubble.textContent = "💬"; });
+    bubble.appendChild(icon);
 
     const panel = document.createElement("div");
     panel.className = "ai-chat-min__panel";
