@@ -26,7 +26,7 @@
     },
     "description": """
 Website AI Chat (Minimal) for Odoo 17.0 CE:
-- Standalone /ai-chat page (auth='user')
+- Standalone (auth='user')
 - Session-only history, no DB persistence (GDPR-friendly)
 - OpenAI / Google Gemini backends
 - Optional PDF grounding (server folder)
