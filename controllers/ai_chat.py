@@ -27,8 +27,10 @@ GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
+
 def _icp():
     return request.env["ir.config_parameter"].sudo()
+
 
 def _get_icp_param(name, default=""):
     try:
@@ -38,11 +40,13 @@ def _get_icp_param(name, default=""):
         _logger.warning("ICP get_param failed for %s: %s", name, tools.ustr(e))
         return default
 
+
 def _is_logged_in(env):
     try:
         return bool(env.user and not env.user._is_public())
     except Exception:
         return False
+
 
 def _require_group_if_configured(env) -> bool:
     xmlid = _get_icp_param("website_ai_chat_min.require_group_xmlid", "")
@@ -53,8 +57,10 @@ def _require_group_if_configured(env) -> bool:
     except Exception:
         return False
 
+
 def _can_show_widget(env) -> bool:
     return _is_logged_in(env) and _require_group_if_configured(env)
+
 
 def _get_rate_limits():
     try:
@@ -67,6 +73,7 @@ def _get_rate_limits():
         window = DEFAULT_RATE_LIMIT_WINDOW
     return max(1, max_req), max(1, window)
 
+
 def _client_ip():
     try:
         xfwd = request.httprequest.headers.get("X-Forwarded-For", "")
@@ -74,6 +81,7 @@ def _client_ip():
         return ip
     except Exception:
         return "0.0.0.0"
+
 
 def _throttle() -> bool:
     try:
@@ -96,6 +104,7 @@ def _throttle() -> bool:
         _logger.warning("Throttle error: %s", tools.ustr(e))
         return True
 
+
 def _normalize_message_from_request(question_param=None) -> str:
     msg = (question_param or "").strip()
     if msg:
@@ -117,6 +126,7 @@ def _normalize_message_from_request(question_param=None) -> str:
         pass
     return ""
 
+
 def _match_allowed(pattern: str, text: str, timeout_ms=60) -> bool:
     if not pattern:
         return True
@@ -129,6 +139,7 @@ def _match_allowed(pattern: str, text: str, timeout_ms=60) -> bool:
     except Exception as e:
         _logger.warning("Invalid allowed_regex or match error: %s", tools.ustr(e))
         return False
+
 
 def _read_pdf_snippets(root_folder: str, query: str) -> dict:
     try:
@@ -156,6 +167,7 @@ def _read_pdf_snippets(root_folder: str, query: str) -> dict:
                 _logger.warning("Error reading PDF %s: %s", path, tools.ustr(e))
     return result
 
+
 def _get_ai_config():
     provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
@@ -165,6 +177,7 @@ def _get_ai_config():
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
     only_docs = tools.str2bool(_get_icp_param("website_ai_chat_min.answer_only_from_docs", "0"))
     return provider, api_key, model, system_prompt, allowed_regex, docs_folder, only_docs
+
 
 def _call_openai(api_key, model, system_prompt, user_text) -> str:
     from openai import OpenAI  # type: ignore
@@ -181,6 +194,7 @@ def _call_openai(api_key, model, system_prompt, user_text) -> str:
     )
     return (resp.choices[0].message.content or "").strip()
 
+
 def _call_gemini(api_key, model, system_prompt, user_text) -> str:
     import google.generativeai as genai  # type: ignore
     genai.configure(api_key=api_key)
@@ -193,10 +207,18 @@ def _call_gemini(api_key, model, system_prompt, user_text) -> str:
     )
     return (getattr(r, "text", None) or "").strip()
 
-# ----------------------------------------------------------------------------
-# Controller
-# ----------------------------------------------------------------------------
+
 class WebsiteAIChatController(http.Controller):
+
+    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=False, methods=["POST"])
+    def can_load(self):
+        try:
+            show = _can_show_widget(request.env)
+            _logger.info("[website_ai_chat_min] can_load show=%s", show)
+            return {"show": bool(show)}
+        except Exception as e:
+            _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
+            return {"show": False}
 
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def send(self, question=None):
