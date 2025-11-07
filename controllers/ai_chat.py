@@ -259,7 +259,7 @@ class WebsiteAIChatController(http.Controller):
 
             if provider == "gemini":
                 reply = _call_gemini(api_key, model, system_prompt, full_prompt)
-            else:
+            elif provider == "openai":
                 reply = _call_openai(api_key, model, system_prompt, full_prompt)
 
             return {"ok": True, "reply": reply or _("(No answer returned.)")}
