@@ -1,201 +1,374 @@
+/* eslint-disable no-console */
 (() => {
   "use strict";
 
-  // Unwrap Odoo JSON-RPC envelopes
-  const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
+  // -----------------------------
+  // Small utilities
+  // -----------------------------
 
-  // Wait until <body> exists (assets can load after DOMContentLoaded on Website)
-  function bodyReady(fn) {
-    if (document.body) return fn();
-    const mo = new MutationObserver(() => {
-      if (document.body) { mo.disconnect(); fn(); }
-    });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+  // Unwrap JSON-RPC envelopes into {result: ...}
+  function unwrap(x) {
+    if (!x || typeof x !== "object") return x;
+    if ("result" in x && x.result) return x.result;
+    return x;
   }
 
-  const esc = (s) => String(s || "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  // Robust cookie getter (order/quoting safe enough for our use)
+  function getCookie(name) {
+    const parts = document.cookie.split(";").map((s) => s.trim());
+    for (const p of parts) {
+      if (p.startsWith(name + "=")) return decodeURIComponent(p.split("=", 2)[1] || "");
+    }
+    return "";
+  }
+
+  // Wait until <body> exists before mounting (Odoo Website loads can be late)
+  function bodyReady(fn) {
+    if (document.body) return void fn();
+    const obs = new MutationObserver(() => {
+      if (document.body) {
+        obs.disconnect();
+        fn();
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // Escape helper (kept for future HTML renderers)
+  function esc(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  // -----------------------------
+  // UI construction
+  // -----------------------------
 
   function buildUI(mount) {
+    // Wrapper keeps bubble and panel positioned together
     const wrap = document.createElement("div");
     wrap.className = "ai-chat-min__wrap";
+    wrap.setAttribute("aria-live", "polite");
 
+    // Floating action button (chat bubble)
     const bubble = document.createElement("button");
     bubble.className = "ai-chat-min__bubble";
-    bubble.type = "button";
-    bubble.setAttribute("aria-label", "Academy Ai");
+    bubble.setAttribute("type", "button");
+    bubble.setAttribute("aria-label", "Open assistant");
     bubble.textContent = "💬";
 
+    // Panel (dialog)
     const panel = document.createElement("div");
     panel.className = "ai-chat-min__panel";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
-    panel.hidden = true;
+    panel.hidden = true; // toggled via toggle()
 
+    // Header
     const header = document.createElement("div");
     header.className = "ai-chat-min__header";
-    const title = document.createElement("span");
-    title.textContent = "Academy Ai";
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ai-chat-min__close";
-    closeBtn.type = "button";
-    closeBtn.textContent = "×";
-    header.appendChild(title); header.appendChild(closeBtn);
+    header.id = "ai-chat-min-header";
 
+    const title = document.createElement("div");
+    title.className = "ai-chat-min__title";
+    title.textContent = "Assistant";
+
+    const close = document.createElement("button");
+    close.className = "ai-chat-min__close";
+    close.setAttribute("type", "button");
+    close.setAttribute("aria-label", "Close assistant");
+    close.textContent = "✕";
+
+    header.append(title, close);
+    panel.setAttribute("aria-labelledby", "ai-chat-min-header");
+
+    // Body (messages stream)
     const body = document.createElement("div");
     body.className = "ai-chat-min__body";
 
+    // Footer (input + send)
     const footer = document.createElement("div");
     footer.className = "ai-chat-min__footer";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Type your question…";
+
+    const input = document.createElement("textarea");
+    input.className = "ai-chat-min__input";
+    input.setAttribute("rows", "1");
+    input.setAttribute("placeholder", "Type your question…");
+
     const send = document.createElement("button");
     send.className = "ai-chat-min__send";
-    send.type = "button";
+    send.setAttribute("type", "button");
     send.textContent = "Send";
-    footer.appendChild(input); footer.appendChild(send);
 
-    panel.appendChild(header); panel.appendChild(body); panel.appendChild(footer);
-    wrap.appendChild(bubble); wrap.appendChild(panel);
+    footer.append(input, send);
+
+    // Assemble
+    panel.append(header, body, footer);
+    wrap.append(bubble, panel);
+    mount.append(wrap);
+
+    // Focus management & accessibility
+    let isOpen = false;
+    let busy = false;
 
     function toggle(open) {
-      panel.hidden = (open === undefined) ? !panel.hidden : !open;
-      (panel.hidden ? bubble : input).focus();
+      isOpen = open;
+      panel.hidden = !open;
+      if (open) {
+        panel.scrollTop = panel.scrollHeight;
+        input.focus();
+      } else {
+        bubble.focus();
+      }
     }
-    bubble.addEventListener("click", () => toggle(true));
-    closeBtn.addEventListener("click", () => toggle(false));
-    window.addEventListener("keydown", (e) => { if (!panel.hidden && e.key === "Escape") toggle(false); });
 
-    function appendMessage(cls, text) {
+    // Focus trap inside the dialog when open
+    function focusTrap(e) {
+      if (!isOpen) return;
+      if (e.key !== "Tab") return;
+      const focusables = panel.querySelectorAll(
+        'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const list = Array.from(focusables).filter((el) => !el.hasAttribute("disabled"));
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        last.focus();
+        e.preventDefault();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        first.focus();
+        e.preventDefault();
+      }
+    }
+
+    // Messages helpers
+    function appendMessage(kind, text) {
       const row = document.createElement("div");
-      row.className = `ai-chat-min__msg ${cls}`;
-      row.textContent = String(text || "");
-      body.appendChild(row);
+      row.className = "ai-chat-min__msg " + (kind === "user" ? "user" : "bot");
+      const bubble = document.createElement("div");
+      bubble.className = "ai-chat-min__msgbubble";
+      bubble.textContent = text || "";
+      row.append(bubble);
+      body.append(row);
       body.scrollTop = body.scrollHeight;
+      return row; // return for further updates (e.g., typing)
     }
 
-    function appendBotUI(ui) {
-      // Title
-      if (ui.title) {
-        const t = document.createElement("div");
-        t.className = "ai-title";
-        t.innerText = ui.title;
-        appendBox(t);
-      }
-      // Summary
-      if (ui.summary) {
-        const s = document.createElement("div");
-        s.className = "ai-summary";
-        s.innerText = ui.summary;
-        appendBox(s);
-      }
-      // Answer (clamped)
-      if (ui.answer_md) {
-        const md = document.createElement("div");
-        md.className = "ai-md ai-md--clamp";
-        md.innerText = ui.answer_md;  // keep plain for safety (no innerHTML)
-        const more = document.createElement("div");
-        more.className = "ai-more";
-        more.innerText = "Show more";
-        md.appendChild(more);
-        more.addEventListener("click", () => {
-          md.classList.toggle("ai-md--clamp");
-          more.innerText = md.classList.contains("ai-md--clamp") ? "Show more" : "Show less";
-        });
-        appendBox(md);
-      }
-      // Citations
-      if (Array.isArray(ui.citations) && ui.citations.length) {
-        const c = document.createElement("div");
-        c.className = "ai-citations";
-        ui.citations.forEach(ci => {
-          const chip = document.createElement("span");
-          chip.className = "ai-chip";
-          chip.innerText = `${ci.file} p.${ci.page}`;
-          c.appendChild(chip);
-        });
-        appendBox(c);
-      }
-      // Suggestions
-      if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
-        const s = document.createElement("div");
-        s.className = "ai-suggestions";
-        ui.suggestions.forEach(sug => {
-          const b = document.createElement("button");
-          b.className = "ai-suggest";
-          b.type = "button";
-          b.innerText = sug;
-          b.addEventListener("click", () => { input.value = b.textContent || ""; input.focus(); });
-          s.appendChild(b);
-        });
-        appendBox(s);
-      }
-    }
-
-    function appendBox(el) {
+    function appendTyping() {
       const row = document.createElement("div");
       row.className = "ai-chat-min__msg bot";
-      row.appendChild(el);
-      body.appendChild(row);
+      const bubble = document.createElement("div");
+      bubble.className = "ai-chat-min__msgbubble";
+      bubble.textContent = "Assistant is typing…";
+      bubble.setAttribute("data-typing", "1");
+      row.append(bubble);
+      body.append(row);
+      body.scrollTop = body.scrollHeight;
+      return bubble;
+    }
+
+    function replaceTyping(node, withText) {
+      if (node && node.getAttribute("data-typing")) {
+        node.removeAttribute("data-typing");
+        node.textContent = withText || "";
+      }
+    }
+
+    function chip(text) {
+      const c = document.createElement("span");
+      c.className = "ai-chat-min__chip";
+      c.textContent = text;
+      return c;
+    }
+
+    // Render a structured bot UI (safe: all textContent)
+    function appendBotUI(ui) {
+      const row = document.createElement("div");
+      row.className = "ai-chat-min__msg bot";
+      const b = document.createElement("div");
+      b.className = "ai-chat-min__msgbubble";
+
+      if (ui.title) {
+        const t = document.createElement("div");
+        t.className = "ai-chat-min__ui-title";
+        t.textContent = ui.title;
+        b.append(t);
+      }
+      if (ui.summary) {
+        const s = document.createElement("div");
+        s.className = "ai-chat-min__ui-summary";
+        s.textContent = ui.summary;
+        b.append(s);
+      }
+      if (ui.answer_md || ui.answer_text) {
+        const a = document.createElement("div");
+        a.className = "ai-chat-min__ui-answer clamp";
+        // We keep plain text (no HTML parsing) to avoid XSS risk.
+        a.textContent = ui.answer_md || ui.answer_text;
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "ai-chat-min__more";
+        more.textContent = "Show more";
+        more.addEventListener("click", () => {
+          const clamped = a.classList.toggle("clamp");
+          more.textContent = clamped ? "Show more" : "Show less";
+        });
+        b.append(a, more);
+      }
+      if (Array.isArray(ui.citations) && ui.citations.length) {
+        const ct = document.createElement("div");
+        ct.className = "ai-chat-min__citations";
+        const label = document.createElement("div");
+        label.className = "ai-chat-min__citlabel";
+        label.textContent = ui.citations_label || "Citations";
+        ct.append(label);
+        for (const c of ui.citations) {
+          ct.append(chip(`${c.file || "doc"} p.${c.page || "?"}`));
+        }
+        b.append(ct);
+      }
+      if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
+        const sg = document.createElement("div");
+        sg.className = "ai-chat-min__sugs";
+        for (const s of ui.suggestions) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ai-chat-min__sug";
+          btn.textContent = s;
+          btn.addEventListener("click", () => {
+            input.value = s;
+            input.focus();
+          });
+          sg.append(btn);
+        }
+        b.append(sg);
+      }
+
+      row.append(b);
+      body.append(row);
       body.scrollTop = body.scrollHeight;
     }
 
+    // Send logic
     async function sendMsg() {
-      const q = input.value.trim();
-      if (!q) return;
+      const q = (input.value || "").trim();
+      if (!q || busy) return;
+
+      busy = true;
+      input.disabled = true;
+      send.disabled = true;
+
       appendMessage("user", q);
       input.value = "";
 
-      const headers = { "Content-Type": "application/json" };
-      const t = (document.cookie.match(/(^| )csrf_token=([^;]+)/) || [])[2]
-        || (document.cookie.match(/(^| )frontend_csrf_token=([^;]+)/) || [])[2];
-      if (t) { headers["X-Openerp-CSRF-Token"] = t; headers["X-CSRFToken"] = t; }
+      // Visual typing indicator
+      const typingNode = appendTyping();
 
       try {
+        const headers = { "Content-Type": "application/json" };
+        const t = getCookie("csrf_token") || getCookie("frontend_csrf_token");
+        if (t) {
+          headers["X-Openerp-CSRF-Token"] = t;
+          headers["X-CSRFToken"] = t;
+        }
+
         const res = await fetch("/ai_chat/send", {
           method: "POST",
+          credentials: "same-origin",
           headers,
           body: JSON.stringify({ question: q }),
-          credentials: "same-origin",
         });
-        const raw = await res.json().catch(() => ({}));
+
+        // Gracefully handle non-JSON bodies
+        const raw = await res
+          .json()
+          .catch(() => ({}));
+
+        const rpcError =
+          raw && raw.error && (raw.error.message || (raw.error.data && raw.error.data.message));
         const data = unwrap(raw);
-        if (res.ok && data && data.ok) {
-          if (data.ui) appendBotUI(data.ui);
-          else appendMessage("bot", data.reply || "");
+
+        if (res.status === 401 || res.status === 403 || rpcError) {
+          replaceTyping(typingNode, rpcError || "You are not allowed to use this assistant.");
+          return;
+        }
+        if (res.status === 429) {
+          replaceTyping(typingNode, "You are sending messages too quickly. Please wait a moment.");
+          return;
+        }
+
+        if (res.ok && data) {
+          if (data.ok && data.ui) {
+            // Remove typing row before rendering structured UI
+            replaceTyping(typingNode, "");
+            typingNode.parentElement?.parentElement?.remove?.();
+            appendBotUI(data.ui);
+          } else if (data.ok) {
+            replaceTyping(typingNode, data.reply || "");
+          } else {
+            replaceTyping(typingNode, data.reply || "The service is temporarily unavailable.");
+          }
         } else {
-          appendMessage("bot", (data && data.reply) || "Network error.");
+          replaceTyping(typingNode, "Network error. Please try again.");
         }
       } catch (e) {
-        console.error("AI Chat: send failed", e);
-        appendMessage("bot", "Network error.");
+        console.error(e);
+        replaceTyping(typingNode, "Network error. Please try again.");
+      } finally {
+        busy = false;
+        input.disabled = false;
+        send.disabled = false;
+        input.focus();
       }
     }
+
+    // Events
+    bubble.addEventListener("click", () => toggle(true));
+    close.addEventListener("click", () => toggle(false));
+    panel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        toggle(false);
+      } else {
+        focusTrap(e);
+      }
+    });
     send.addEventListener("click", sendMsg);
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMsg();
+      }
     });
 
-    (mount || document.body).appendChild(wrap);
-    console.info("AI Chat: mounted bubble");
+    // expose for debugging if needed
+    return { toggle, input, send, body };
   }
 
+  // -----------------------------
+  // Initialization
+  // -----------------------------
   async function init() {
     try {
       const res = await fetch("/ai_chat/can_load", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
         credentials: "same-origin",
+        body: "{}",
       });
-      const data = unwrap(await res.json());
-      console.info("AI Chat: readiness:", data);
+      const raw = await res.json().catch(() => ({}));
+      const data = unwrap(raw) || {};
       if (data && data.show === true) {
-        const standalone = document.querySelector("#ai-chat-standalone");
-        buildUI(standalone || undefined);
+        const mount = document.getElementById("ai-chat-standalone") || document.body;
+        buildUI(mount);
+        console.info("[ai-chat] widget mounted");
+      } else {
+        console.info("[ai-chat] widget hidden by policy");
       }
     } catch (e) {
-      console.warn("AI Chat: can_load probe failed; keeping hidden", e);
+      console.warn("[ai-chat] cannot probe can_load:", e);
     }
   }
 
