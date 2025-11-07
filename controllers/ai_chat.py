@@ -222,9 +222,9 @@ def _read_pdf_snippets(
 
 
 def _get_ai_config():
-    provider = os.getenv("AI_PROVIDER") or _get_icp_param("website_ai_chat_min.ai_provider", "openai")
-    api_key = os.getenv("AI_API_KEY") or _get_icp_param("website_ai_chat_min.ai_api_key", "")
-    model = os.getenv("AI_MODEL") or _get_icp_param("website_ai_chat_min.ai_model", "")
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
+    api_key =  _get_icp_param("website_ai_chat_min.ai_api_key", "")
+    model =  _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "") or ""
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "") or ""
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "") or ""
