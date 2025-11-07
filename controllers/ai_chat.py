@@ -18,7 +18,7 @@ try:
 except Exception:
     regex_safe = None
 
-# ---- Defaults / tunables (can be overridden via ICP) -------------------------
+# ---- Defaults / tunables (overridable via ICP) -------------------------------
 DEFAULT_RATE_LIMIT_MAX = 5
 DEFAULT_RATE_LIMIT_WINDOW = 15
 
@@ -74,17 +74,24 @@ def _is_logged_in(env):
 
 
 def _require_group_if_configured(env) -> bool:
+    """Gate used for /ai_chat/send (NOT for bubble visibility)."""
     xmlid = _get_icp_param("website_ai_chat_min.require_group_xmlid", "")
     if not xmlid:
         return True
     try:
         return env.user.has_group(xmlid)
     except Exception:
+        # If XMLID is wrong, deny send (safe default).
         return False
 
 
 def _can_show_widget(env) -> bool:
-    return _is_logged_in(env) and _require_group_if_configured(env)
+    """
+    Bubble visibility rule:
+    - Show for LOGGED-IN users only (no group check here).
+    - Public users will not see the bubble.
+    """
+    return _is_logged_in(env)
 
 
 def _get_rate_limits():
@@ -282,9 +289,12 @@ def _redact_pii(text: str) -> str:
     try:
         if not text:
             return text
-        text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)  # emails
-        text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)  # phones (rough)
-        text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)  # simple IDs
+        # Emails
+        text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)
+        # Phone numbers (rough)
+        text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)
+        # National/simple IDs
+        text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)
         return text
     except Exception:
         return text
@@ -413,6 +423,7 @@ class WebsiteAIChatController(http.Controller):
         Validates, (optionally) retrieves PDF context, composes prompt,
         calls provider with retries, and returns a compact, structured reply.
         """
+        # GROUP GATE APPLIES TO SENDING (not to bubble visibility)
         if not _require_group_if_configured(request.env):
             raise AccessDenied("You do not have access to AI Chat.")
 
