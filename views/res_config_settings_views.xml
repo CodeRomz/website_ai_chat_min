@@ -10,67 +10,71 @@
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-                    <!-- Provider -->
-                    <setting string="AI Provider">
-                        <field name="ai_provider"/>
-                    </setting>
-                    <setting string="Model">
-                        <field name="ai_model"/>
-                    </setting>
-                    <setting string="API Key">
-                        <field name="ai_api_key" password="True"/>
-                    </setting>
-                    <setting string="System Prompt">
-                        <field name="system_prompt"/>
-                    </setting>
-                    <setting string="Allowed Questions (regex)">
-                        <field name="allowed_regex"/>
-                    </setting>
-                    <setting string="Require Group (XMLID)" help="Example: base.group_user">
-                        <field name="require_group_xmlid"/>
-                    </setting>
+                    <group><!-- Provider -->
+                        <setting string="AI Provider">
+                            <field name="ai_provider"/>
+                        </setting>
+                        <setting string="Model">
+                            <field name="ai_model"/>
+                        </setting>
+                        <setting string="API Key">
+                            <field name="ai_api_key" password="True"/>
+                        </setting>
+                        <setting string="System Prompt">
+                            <field name="system_prompt"/>
+                        </setting>
+                        <setting string="Allowed Questions (regex)">
+                            <field name="allowed_regex"/>
+                        </setting>
+                        <setting string="Require Group (XMLID)" help="Example: base.group_user">
+                            <field name="require_group_xmlid"/>
+                        </setting>
+                    </group>
 
-                    <!-- Retrieval -->
-                    <setting string="PDF Folder">
-                        <field name="docs_folder"/>
-                    </setting>
-                    <setting string="Answer Only From Documents">
-                        <field name="answer_only_from_docs"/>
-                    </setting>
-                    <setting string="Docs: Max Files">
-                        <field name="docs_max_files"/>
-                    </setting>
-                    <setting string="Docs: Max Pages/File">
-                        <field name="docs_max_pages"/>
-                    </setting>
-                    <setting string="Docs: Max Matches">
-                        <field name="docs_max_hits"/>
-                    </setting>
+                    <group><!-- Retrieval -->
+                        <setting string="PDF Folder">
+                            <field name="docs_folder"/>
+                        </setting>
+                        <setting string="Answer Only From Documents">
+                            <field name="answer_only_from_docs"/>
+                        </setting>
+                        <setting string="Docs: Max Files">
+                            <field name="docs_max_files"/>
+                        </setting>
+                        <setting string="Docs: Max Pages/File">
+                            <field name="docs_max_pages"/>
+                        </setting>
+                        <setting string="Docs: Max Matches">
+                            <field name="docs_max_hits"/>
+                        </setting>
+                    </group>
 
-                    <!-- Inference controls -->
-                    <setting string="AI Timeout (sec)">
-                        <field name="ai_timeout"/>
-                    </setting>
-                    <setting string="AI Temperature">
-                        <field name="ai_temperature"/>
-                    </setting>
-                    <setting string="AI Max Tokens">
-                        <field name="ai_max_tokens"/>
-                    </setting>
-                    <setting string="Redact PII in Prompts">
-                        <field name="redact_pii"/>
-                    </setting>
+                    <group><!-- Inference controls -->
+                        <setting string="AI Timeout (sec)">
+                            <field name="ai_timeout"/>
+                        </setting>
+                        <setting string="AI Temperature">
+                            <field name="ai_temperature"/>
+                        </setting>
+                        <setting string="AI Max Tokens">
+                            <field name="ai_max_tokens"/>
+                        </setting>
+                        <setting string="Redact PII in Prompts">
+                            <field name="redact_pii"/>
+                        </setting>
+                    </group>
 
-                    <!-- UX / Legal / Rate limit -->
-                    <setting string="Privacy Policy URL">
-                        <field name="privacy_url"/>
-                    </setting>
-                    <setting string="Rate Limit: Max Requests">
-                        <field name="rate_limit_max"/>
-                    </setting>
-                    <setting string="Rate Limit: Window (sec)">
-                        <field name="rate_limit_window"/>
-                    </setting>
+                    <group><!-- UX / Legal / Rate limit -->
+                        <setting string="Privacy Policy URL">
+                            <field name="privacy_url"/>
+                        </setting>
+                        <setting string="Rate Limit: Max Requests">
+                            <field name="rate_limit_max"/>
+                        </setting>
+                        <setting string="Rate Limit: Window (sec)">
+                            <field name="rate_limit_window"/>
+                        </setting>
+                    </group>
 
                 </block>
             </xpath>
