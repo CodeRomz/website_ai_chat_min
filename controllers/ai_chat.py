@@ -521,7 +521,7 @@ class WebsiteAIChatController(http.Controller):
         t_scan0 = time.time()
 
         docs_folder = cfg["docs_folder"]
-        if route_action == "retrieve" and docs_folder and os.path.isdir(docs_folder):
+        if (cfg["only_docs"] or route_action == "retrieve") and docs_folder and os.path.isdir(docs_folder):
             if not _neg_cache_get(q):
                 doc_snippets = _read_pdf_snippets(docs_folder, q)
                 if not doc_snippets:
@@ -532,8 +532,8 @@ class WebsiteAIChatController(http.Controller):
         if cfg["only_docs"] and not doc_snippets:
             ui = {
                 "title": "",
-                "summary": _("I don’t know based on the current documents."),
-                "answer_md": _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."),
+                "summary": _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."),
+                "answer_md": _("I don’t know based on the current documents."),
                 "citations": [],
                 "suggestions": [_("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")],
             }
