@@ -44,7 +44,8 @@ Return ONLY a JSON object with:
   ],
   "suggestions": [string]    // optional; ≤ 3 follow-ups
 }
-Do NOT include text before/after the JSON.
+Do NOT wrap the JSON in code fences.
+Do NOT include text before or after the JSON.
 If documents are insufficient and docs-only is enabled,
 set "summary" to "I don’t know based on the current documents."
 and keep "answer_md" short, asking the user to narrow by document number.
@@ -432,6 +433,36 @@ def _get_ai_config():
         "docs_budget_ms": docs_budget_ms,
     }
 
+# ---------------- Markdown fence/JSON extraction helpers (NEW) ----------------
+def _strip_md_fences(s: str) -> str:
+    """Remove ```...``` fences (with optional language tag) from a single block."""
+    try:
+        if not s:
+            return s
+        t = s.strip()
+        m = re_std.match(r"^```[a-zA-Z0-9_-]*\s*\n(.*)\n```$", t, re_std.S)
+        return (m.group(1).strip() if m else t)
+    except Exception:
+        return s
+
+def _extract_json_obj(text: str):
+    """Be liberal in what we accept: strip fences and pick the first {...} block."""
+    if not text:
+        return None
+    s = _strip_md_fences(text).strip()
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    i, j = s.find("{"), s.rfind("}")
+    if i != -1 and j != -1 and j > i:
+        candidate = s[i:j+1]
+        try:
+            return json.loads(candidate)
+        except Exception:
+            return None
+    return None
+
 # ---------------- HTTP Controller ----------------
 class WebsiteAIChatController(http.Controller):
 
@@ -528,7 +559,7 @@ class WebsiteAIChatController(http.Controller):
                 scan_ms, ai_ms, len(doc_snippets), bool(cfg["redact_pii"])
             )
 
-        # ---------------- Parse UI payload ----------------
+        # ---------------- Parse UI payload (robust, CLEAN) ----------------
         ui = {
             "title": "",
             "summary": "",
@@ -536,18 +567,19 @@ class WebsiteAIChatController(http.Controller):
             "citations": [],
             "suggestions": [],
         }
-        try:
-            parsed = json.loads(reply or "")
-            if isinstance(parsed, dict) and parsed.get("answer_md"):
-                ui.update({
-                    "title": (parsed.get("title") or "")[:60],
-                    "summary": parsed.get("summary") or "",
-                    "answer_md": (parsed.get("answer_md") or "").strip(),
-                    "citations": list(parsed.get("citations") or [])[:8],
-                    "suggestions": list(parsed.get("suggestions") or [])[:3],
-                })
-        except Exception:
-            pass
+
+        parsed = _extract_json_obj(reply or "")
+        if isinstance(parsed, dict) and parsed.get("answer_md"):
+            ui.update({
+                "title": (parsed.get("title") or "")[:60],
+                "summary": parsed.get("summary") or "",
+                "answer_md": (parsed.get("answer_md") or "").strip(),
+                "citations": list(parsed.get("citations") or [])[:8],
+                "suggestions": list(parsed.get("suggestions") or [])[:3],
+            })
+        else:
+            # ensure we never send fenced content to the UI
+            ui["answer_md"] = _strip_md_fences(ui["answer_md"])
 
         if not ui["citations"] and doc_snippets:
             ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]

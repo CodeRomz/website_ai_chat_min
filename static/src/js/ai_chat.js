@@ -39,38 +39,26 @@
     return { ok: res.ok, status: res.status, data };
   }
 
-// Replace your old isUserLoggedIn() with this:
-async function isUserLoggedIn() {
-  // read csrf from either cookie name
-  const csrf =
-    (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1]) ||
-    (document.cookie.match(/(?:^|;\s*)frontend_csrf_token=([^;]+)/)?.[1]) ||
-    "";
-
-  try {
-    const res = await fetch("/web/session/get_session_info", {
-      method: "POST",                         // <-- POST (not GET)
-      credentials: "same-origin",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        ...(csrf ? { "X-CSRFToken": csrf, "X-Openerp-CSRF-Token": csrf } : {}),
-      },
-      body: JSON.stringify({                  // <-- JSON-RPC envelope
-        jsonrpc: "2.0",
-        method: "call",
-        params: {},
-      }),
-    });
-
-    if (!res.ok) return false;
-    const data = await res.json();
-    const info = (data && data.result) ? data.result : data;  // unwrap JSON-RPC
-    return !!(info && Number.isInteger(info.uid) && info.uid > 0);
-  } catch {
-    return false;
+  // ---- LOGIN CHECK (POST JSON-RPC) ----
+  async function isUserLoggedIn() {
+    const csrf = getCsrf();
+    try {
+      const res = await fetch("/web/session/get_session_info", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          ...(csrf ? { "X-CSRFToken": csrf, "X-Openerp-CSRF-Token": csrf } : {}),
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      const info = unwrap(data);
+      return !!(info && Number.isInteger(info.uid) && info.uid > 0);
+    } catch { return false; }
   }
-}
 
   async function probeCanLoad() {
     try {
@@ -161,57 +149,26 @@ async function isUserLoggedIn() {
       body.scrollTop = body.scrollHeight;
     }
 
+    // ---- MINIMALIST ANSWER RENDERING ----
     function appendBotUI(ui) {
-      if (ui.title) {
-        const t = document.createElement("div");
-        t.className = "ai-title";
-        t.innerText = ui.title;
-        appendBox(t);
-      }
-      if (ui.summary) {
-        const s = document.createElement("div");
-        s.className = "ai-summary";
-        s.innerText = ui.summary;
-        appendBox(s);
-      }
-      if (ui.answer_md) {
-        const md = document.createElement("div");
-        md.className = "ai-md ai-md--clamp";
-        md.innerText = ui.answer_md;  // plain text for safety
-        const more = document.createElement("div");
-        more.className = "ai-more";
-        more.innerText = "Show more";
-        md.appendChild(more);
-        more.addEventListener("click", () => {
-          md.classList.toggle("ai-md--clamp");
-          more.innerText = md.classList.contains("ai-md--clamp") ? "Show more" : "Show less";
-        });
-        appendBox(md);
-      }
-      if (Array.isArray(ui.citations) && ui.citations.length) {
+      const text = (ui && ui.answer_md ? String(ui.answer_md) : "").trim();
+
+      const row = document.createElement("div");
+      row.className = "ai-chat-min__msg bot";
+      row.textContent = text || "…";
+      body.appendChild(row);
+
+      // (Optional) tiny citations line; remove this block for zero extras
+      if (ui && Array.isArray(ui.citations) && ui.citations.length) {
         const c = document.createElement("div");
-        c.className = "ai-citations";
-        ui.citations.forEach(ci => {
-          const chip = document.createElement("span");
-          chip.className = "ai-chip";
-          chip.innerText = `${ci.file} p.${ci.page}`;
-          c.appendChild(chip);
-        });
-        appendBox(c);
+        c.className = "ai-chat-min__msg bot";
+        c.style.opacity = "0.8";
+        c.style.fontSize = "12px";
+        c.textContent = ui.citations.slice(0, 5).map(ci => `${ci.file} p.${ci.page}`).join(" • ");
+        body.appendChild(c);
       }
-      if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
-        const s = document.createElement("div");
-        s.className = "ai-suggestions";
-        ui.suggestions.forEach(sug => {
-          const b = document.createElement("button");
-          b.className = "ai-suggest";
-          b.type = "button";
-          b.innerText = sug;
-          b.addEventListener("click", () => { input.value = b.textContent || ""; input.focus(); });
-          s.appendChild(b);
-        });
-        appendBox(s);
-      }
+
+      body.scrollTop = body.scrollHeight;
     }
 
     async function sendMsg() {
@@ -228,7 +185,6 @@ async function isUserLoggedIn() {
         });
 
         if (!ok && (status === 401 || status === 403)) {
-          // Lost auth — hide widget and stop
           panel.hidden = true;
           bubble.style.display = "none";
           return;
@@ -256,41 +212,16 @@ async function isUserLoggedIn() {
   }
 
   async function init() {
-  // Try the server-controlled probe first
-  let canMount = true;
-  try {
-    const csrf =
-      (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1]) ||
-      (document.cookie.match(/(?:^|;\s*)frontend_csrf_token=([^;]+)/)?.[1]) ||
-      "";
-    const r = await fetch("/ai_chat/can_load", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        ...(csrf ? { "X-CSRFToken": csrf, "X-Openerp-CSRF-Token": csrf } : {}),
-      },
-      body: "{}",
-    });
-    if (r.ok) {
-      const j = await r.json();
-      const d = (j && j.result) ? j.result : j;   // unwrap JSON-RPC if any
-      if (d && typeof d === "object" && "show" in d) canMount = !!d.show;
-    } else if (r.status === 401 || r.status === 403) {
-      canMount = false;
-    }
-  } catch { /* fall through */ }
+    // Probe first (server decides visibility). If missing, rely on session check.
+    const { mount } = await probeCanLoad();
+    if (!mount) return;
 
-  if (!canMount) return;
+    const logged = await isUserLoggedIn();
+    if (!logged) return;
 
-  // Fallback: if probe is missing or neutral, rely on session check
-  const logged = await isUserLoggedIn();
-  if (!logged) return;
-
-  const mountPoint = document.querySelector("#ai-chat-standalone");
-  buildUI(mountPoint || undefined);
-}
+    const mountPoint = document.querySelector("#ai-chat-standalone");
+    buildUI(mountPoint || undefined);
+  }
 
   function boot() {
     try { init(); } catch (e) { console.warn("AI Chat init failed", e); }
