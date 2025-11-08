@@ -633,6 +633,17 @@ class WebsiteAIChatController(http.Controller):
             # ensure we never send fenced content to the UI
             ui["answer_md"] = _strip_md_fences(ui["answer_md"])
 
+            # NEW: salvage if the model dumped the JSON object inside answer_md
+            salvage = extract_json_obj(ui["answer_md"])
+            if isinstance(salvage, dict) and salvage.get("answer_md"):
+                ui.update({
+                    "title": (salvage.get("title") or "")[:60],
+                    "summary": salvage.get("summary") or "",
+                    "answer_md": (salvage.get("answer_md") or "").strip(),
+                    "citations": list(salvage.get("citations") or [])[:8],
+                    "suggestions": list(salvage.get("suggestions") or [])[:3],
+                })
+
         if not ui["citations"] and doc_snippets:
             ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
 
@@ -646,3 +657,4 @@ class WebsiteAIChatController(http.Controller):
         MAX_ANSWER_CHARS = 1800
         ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
+

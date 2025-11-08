@@ -178,6 +178,27 @@
   return t.trim();
 }
     function appendBotUI(ui) {
+  // If the backend’s ui.answer_md accidentally contains the JSON object, salvage it
+  try {
+    const maybe = extractJsonSafe(ui?.answer_md || '');
+    if (maybe && (maybe.answer_md || maybe.summary || maybe.title)) {
+      ui = {
+        title: String(maybe.title || ui.title || '').slice(0, 80),
+        summary: String(maybe.summary || ui.summary || ''),
+        answer_md: String(maybe.answer_md || maybe.text || ''),
+        citations: Array.isArray(maybe.citations) ? maybe.citations : (ui.citations || []),
+        suggestions: Array.isArray(maybe.suggestions) ? maybe.suggestions.slice(0, 3) : (ui.suggestions || []),
+      };
+    }
+  } catch {}
+
+  // If there are citations (docs answer), allow non-minimal panel; else keep minimalist
+  if (Array.isArray(ui?.citations) && ui.citations.length > 0) {
+    panel.classList.remove('minimal');
+  } else {
+    panel.classList.add('minimal');
+  }
+
   const row = document.createElement('div');
   row.className = 'ai-chat-min__msg bot';
 
@@ -219,6 +240,7 @@
   body.appendChild(row);
   body.scrollTop = body.scrollHeight;
 }
+
 
 
     async function sendMsg() {
