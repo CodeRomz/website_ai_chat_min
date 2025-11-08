@@ -39,16 +39,33 @@
     return { ok: res.ok, status: res.status, data };
   }
 
+// Replace your old isUserLoggedIn() with this:
 async function isUserLoggedIn() {
+  // read csrf from either cookie name
+  const csrf =
+    (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1]) ||
+    (document.cookie.match(/(?:^|;\s*)frontend_csrf_token=([^;]+)/)?.[1]) ||
+    "";
+
   try {
     const res = await fetch("/web/session/get_session_info", {
-      method: "GET",
+      method: "POST",                         // <-- POST (not GET)
       credentials: "same-origin",
-      headers: { "Accept": "application/json" },
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRFToken": csrf, "X-Openerp-CSRF-Token": csrf } : {}),
+      },
+      body: JSON.stringify({                  // <-- JSON-RPC envelope
+        jsonrpc: "2.0",
+        method: "call",
+        params: {},
+      }),
     });
+
     if (!res.ok) return false;
     const data = await res.json();
-    const info = (data && data.result) ? data.result : data; // <-- unwrap JSON-RPC
+    const info = (data && data.result) ? data.result : data;  // unwrap JSON-RPC
     return !!(info && Number.isInteger(info.uid) && info.uid > 0);
   } catch {
     return false;
