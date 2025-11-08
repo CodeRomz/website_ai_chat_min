@@ -212,16 +212,23 @@
 
 
 /* ---------- Chips / Suggestions ---------- */
-.ai-citations { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-.ai-chip { font-size: .85em; padding: 4px 10px; border-radius: var(--ai-pill);
-  background: rgba(var(--ai-accent-rgb), .12); color: rgb(var(--ai-accent-rgb));
-  border: 1px solid rgba(var(--ai-accent-rgb), .35); }
-
+/* --- AI citations & suggestions (unified) --- */
+.ai-citations,
 .ai-suggestions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-.ai-suggestions .ai-suggest { border: 1px solid var(--ai-border); background: #fafafa;
-  border-radius: var(--ai-pill); padding: 6px 12px; cursor: pointer;
-  transition: background .12s ease, transform .08s ease; }
+
+.ai-chip,
+.ai-suggestions .ai-suggest {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--ai-pill);
+  border: 1px solid rgba(var(--ai-accent-rgb), .35);
+  background: rgba(var(--ai-accent-rgb), .12);
+  color: rgb(var(--ai-accent-rgb));
+}
+
+.ai-suggestions .ai-suggest { cursor: pointer; background: #fafafa; }
 .ai-suggestions .ai-suggest:hover { background: rgba(var(--ai-accent-rgb), .10); transform: translateY(-1px); }
+
 
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
