@@ -39,12 +39,21 @@
     return { ok: res.ok, status: res.status, data };
   }
 
-  async function isUserLoggedIn() {
-    try {
-      const { ok, data } = await fetchJSON("/web/session/get_session_info", { method: "GET" });
-      return !!(ok && data && data.uid && Number.isInteger(data.uid) && data.uid > 0);
-    } catch { return false; }
+async function isUserLoggedIn() {
+  try {
+    const res = await fetch("/web/session/get_session_info", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const info = (data && data.result) ? data.result : data; // <-- unwrap JSON-RPC
+    return !!(info && Number.isInteger(info.uid) && info.uid > 0);
+  } catch {
+    return false;
   }
+}
 
   async function probeCanLoad() {
     try {
