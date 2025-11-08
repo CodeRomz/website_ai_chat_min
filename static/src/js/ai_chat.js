@@ -21,23 +21,42 @@
     return getCookie("csrf_token") || getCookie("frontend_csrf_token") || "";
   }
 
-  async function fetchJSON(url, { method = "GET", body = undefined, headers = {} } = {}) {
-    const opts = {
-      method,
-      credentials: "same-origin",
-      headers: {
-        "Accept": "application/json",
-        ...(method !== "GET" ? { "Content-Type": "application/json", "X-CSRFToken": getCsrf(), "X-Openerp-CSRF-Token": getCsrf() } : {}),
-        ...headers,
-      },
-    };
-    if (body !== undefined) opts.body = typeof body === "string" ? body : JSON.stringify(body);
-    const res = await fetch(url, opts);
-    const isJSON = (res.headers.get("content-type") || "").includes("application/json");
-    let data = null;
-    try { data = isJSON ? await res.json() : null; } catch (_) {}
-    return { ok: res.ok, status: res.status, data };
+  async function fetchJSON(
+  url,
+  { method = "GET", body = undefined, headers = {}, timeoutMs = 12000 } = {}
+) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const opts = {
+    method,
+    credentials: "same-origin",
+    signal: ctrl.signal,
+    headers: {
+      "Accept": "application/json",
+      ...(method !== "GET"
+        ? {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrf(),
+            "X-Openerp-CSRF-Token": getCsrf(),
+          }
+        : {}),
+      ...headers,
+    },
+  };
+  if (body !== undefined) {
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
   }
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } finally {
+    clearTimeout(t);
+  }
+  const isJSON = (res.headers.get("content-type") || "").includes("application/json");
+  let data = null;
+  try { data = isJSON ? await res.json() : null; } catch (_) {}
+  return { ok: res.ok, status: res.status, data };
+}
 
   // ---- LOGIN CHECK (POST JSON-RPC) ----
   async function isUserLoggedIn() {

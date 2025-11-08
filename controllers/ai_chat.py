@@ -393,13 +393,16 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
         lines.append(base)
     if only_docs:
         lines.append(
-            "You MUST answer **only** using the provided excerpts. "
-            "If they do not contain the answer, reply exactly: \"I don’t know based on the current documents.\" "
-            "Do not add outside knowledge."
+            # "You MUST answer only using the provided excerpts. "
+            # "If they don't contain the answer, say exactly: “I don’t know based on the current documents.”"
+            "You MUST answer **only** using the provided excerpts. If they do not contain the answer, reply exactly: \"I don’t know based on the current documents.\" Do not add outside knowledge."
         )
     else:
         lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
-
+    lines.append(
+        "Formatting: Keep it compact. No more than 10 bullets or 200 words in 'answer_md'. "
+        "Always include a short 'summary'. If many topics appear, ask for the document number/code."
+    )
     lines.append("OUTPUT FORMAT:\n" + ASSISTANT_JSON_CONTRACT.strip())
     if snippets:
         lines.append("Relevant excerpts (cite using [File p.X]):")
@@ -630,4 +633,6 @@ class WebsiteAIChatController(http.Controller):
                 ui["suggestions"].append(hint)
 
         # Return compact payload your JS expects
+        MAX_ANSWER_CHARS = 1800
+        ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
