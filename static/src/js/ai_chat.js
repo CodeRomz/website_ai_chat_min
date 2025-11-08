@@ -151,59 +151,100 @@
 
     // ---- MINIMALIST ANSWER RENDERING ----
     function appendBotUI(ui) {
-      const text = (ui && ui.answer_md ? String(ui.answer_md) : "").trim();
+  const row = document.createElement('div');
+  row.className = 'ai-chat-min__msg bot';
 
-      const row = document.createElement("div");
-      row.className = "ai-chat-min__msg bot";
-      row.textContent = text || "…";
-      body.appendChild(row);
+  const box = document.createElement('div');
+  box.className = 'ai-box';
 
-      // (Optional) tiny citations line; remove this block for zero extras
-      if (ui && Array.isArray(ui.citations) && ui.citations.length) {
-        const c = document.createElement("div");
-        c.className = "ai-chat-min__msg bot";
-        c.style.opacity = "0.8";
-        c.style.fontSize = "12px";
-        c.textContent = ui.citations.slice(0, 5).map(ci => `${ci.file} p.${ci.page}`).join(" • ");
-        body.appendChild(c);
-      }
+  if (ui?.title) {
+    const t = document.createElement('div');
+    t.className = 'ai-chat-min__title';
+    t.textContent = String(ui.title).trim().slice(0, 80);
+    box.appendChild(t);
+  }
 
-      body.scrollTop = body.scrollHeight;
-    }
+  if (ui?.summary) {
+    const s = document.createElement('div');
+    s.className = 'ai-chat-min__summary';
+    s.textContent = String(ui.summary).trim();
+    box.appendChild(s);
+  }
+
+  const a = document.createElement('div');
+  a.className = 'ai-md';
+  a.innerHTML = mdLiteToHtml(ui?.answer_md || '');
+  box.appendChild(a);
+
+  if (Array.isArray(ui?.citations) && ui.citations.length) {
+    const cwrap = document.createElement('div');
+    cwrap.className = 'ai-citations';
+    ui.citations.slice(0, 5).forEach(ci => {
+      const chip = document.createElement('span');
+      chip.className = 'ai-chip';
+      chip.textContent = `${ci.file} p.${ci.page}`;
+      cwrap.appendChild(chip);
+    });
+    box.appendChild(cwrap);
+  }
+
+  row.appendChild(box);
+  body.appendChild(row);
+  body.scrollTop = body.scrollHeight;
+}
+
 
     async function sendMsg() {
-      const q = input.value.trim();
-      if (!q) return;
-      appendMessage("user", q);
-      input.value = "";
-      send.disabled = true;
+  const q = input.value.trim();
+  if (!q) return;
 
-      try {
-        const { ok, status, data } = await fetchJSON("/ai_chat/send", {
-          method: "POST",
-          body: { question: q },
-        });
+  appendMessage("user", q);
+  input.value = "";
+  send.disabled = true;
 
-        if (!ok && (status === 401 || status === 403)) {
-          panel.hidden = true;
-          bubble.style.display = "none";
-          return;
-        }
+  try {
+    const { ok, status, data } = await fetchJSON("/ai_chat/send", {
+      method: "POST",
+      body: { question: q },
+    });
 
-        const raw = unwrap(data || {});
-        if (ok && raw && raw.ok) {
-          if (raw.ui) appendBotUI(raw.ui);
-          else appendMessage("bot", raw.reply || "");
-        } else {
-          appendMessage("bot", (raw && raw.reply) || "Network error.");
-        }
-      } catch (e) {
-        console.error("AI Chat: send failed", e);
-        appendMessage("bot", "Network error.");
-      } finally {
-        send.disabled = false;
-      }
+    if (!ok && (status === 401 || status === 403)) {
+      panel.hidden = true;
+      bubble.style.display = "none";
+      return;
     }
+
+    const raw = unwrap(data || {});
+    if (ok && raw && raw.ok) {
+      // Prefer structured UI, but gracefully fix raw fenced JSON replies
+      if (raw.ui && typeof raw.ui === 'object') {
+        appendBotUI(raw.ui);
+      } else {
+        const parsed = extractJsonSafe(raw.reply);
+        if (parsed && (parsed.answer_md || parsed.summary || parsed.title)) {
+          const ui = {
+            title: String(parsed.title || '').slice(0, 80),
+            summary: String(parsed.summary || ''),
+            answer_md: String(parsed.answer_md || parsed.text || raw.reply || ''),
+            citations: Array.isArray(parsed.citations) ? parsed.citations : [],
+            suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3) : [],
+          };
+          appendBotUI(ui);
+        } else {
+          appendMessage("bot", (raw.reply || "").replace(/```[\s\S]*?```/g, '').trim() || "…");
+        }
+      }
+    } else {
+      appendMessage("bot", (raw && raw.reply) || "Network error.");
+    }
+  } catch (e) {
+    console.error("AI Chat: send failed", e);
+    appendMessage("bot", "Network error.");
+  } finally {
+    send.disabled = false;
+  }
+}
+
 
     send.addEventListener("click", sendMsg);
     input.addEventListener("keydown", (e) => {
@@ -232,4 +273,48 @@
   } else {
     boot();
   }
+
+
+  // -- Tiny safe Markdown subset (bold **..**, italic *..*, `code`, -,*,1. lists) -> sanitized HTML
+function mdLiteToHtml(md) {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const inline = t => (
+    t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+     .replace(/`([^`]+)`/g, '<code>$1</code>')
+     .replace(/(^|[^\\])\*([^*\n]+)\*/g, (m, p1, p2) => `${p1}<em>${p2}</em>`)
+  );
+  let s = esc(String(md || '')).replace(/\r\n?/g, '\n').trim();
+  const lines = s.split('\n');
+  const out = [];
+  let inUl=false, inOl=false;
+  const endLists=()=>{ if(inUl){out.push('</ul>'); inUl=false;} if(inOl){out.push('</ol>'); inOl=false;} };
+  for (const raw of lines) {
+    const l = raw.trim();
+    const mUl = l.match(/^[*-]\s+(.*)$/);
+    const mOl = l.match(/^\d+\.\s+(.*)$/);
+    if (mUl) { if (inOl){out.push('</ol>'); inOl=false;} if(!inUl){out.push('<ul>'); inUl=true;} out.push('<li>'+inline(mUl[1])+'</li>'); continue; }
+    if (mOl) { if (inUl){out.push('</ul>'); inUl=false;} if(!inOl){out.push('<ol>'); inOl=true;} out.push('<li>'+inline(mOl[1])+'</li>'); continue; }
+    if (!l) { endLists(); continue; }
+    endLists(); out.push('<p>'+inline(l)+'</p>');
+  }
+  endLists();
+  return out.join('') || '<p>…</p>';
+}
+
+// -- Fallback: extract first JSON object from a text (handles ```json ...``` too)
+function extractJsonSafe(text) {
+  if (!text) return null;
+  const s = String(text).trim();
+  // strip code fences if present
+  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : s.trim();
+  try { return JSON.parse(body); } catch {}
+  // last resort: greedy brace slice
+  const start = body.indexOf('{'), end = body.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(body.slice(start, end + 1)); } catch {}
+  }
+  return null;
+}
+
 })();

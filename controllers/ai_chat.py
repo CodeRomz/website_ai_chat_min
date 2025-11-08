@@ -359,19 +359,25 @@ class _OpenAIProvider(_ProviderBase):
         return self._with_retries(_call)
 
 class _GeminiProvider(_ProviderBase):
-    def generate(self, system_text: str, user_text: str) -> str:
-        def _call():
-            import google.generativeai as genai  # type: ignore
-            genai.configure(api_key=self.api_key)
-            model_name = self.model or GEMINI_DEFAULT_MODEL
-            prompt = (system_text + "\n\n" if system_text else "") + (user_text or "")
-            r = genai.GenerativeModel(model_name).generate_content(
-                [prompt],
-                request_options={"timeout": self.timeout},
-                generation_config={"temperature": self.temperature, "max_output_tokens": self.max_tokens},
-            )
-            return (getattr(r, "text", None) or "").strip()
-        return self._with_retries(_call)
+    def generate(self, prompt: str, user_text: str) -> str:
+        import google.generativeai as genai
+        model_name = self.model or "gemini-2.5-flash"
+        genai.configure(api_key=self.api_key)
+
+        model = genai.GenerativeModel(
+            model_name,
+            generation_config={
+                "temperature": self.temperature,
+                "max_output_tokens": self.max_tokens,
+                "response_mime_type": "application/json",  # force JSON, no fences
+            },
+        )
+        r = model.generate_content(
+            [prompt, {"role": "user", "parts": [user_text]}],
+            request_options={"timeout": self.timeout},
+        )
+        return (getattr(r, "text", None) or "").strip()
+
 
 def _get_provider(cfg: dict) -> _ProviderBase:
     provider = (cfg.get("provider") or "openai").strip().lower()
