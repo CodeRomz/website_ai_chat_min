@@ -604,7 +604,7 @@ class WebsiteAIChatController(http.Controller):
             "suggestions": [],
         }
 
-        parsed = _extract_json_obj(reply or "")
+        parsed = extract_json_obj(reply or "")
         if isinstance(parsed, dict) and parsed.get("answer_md"):
             ui.update({
                 "title": (parsed.get("title") or "")[:60],
