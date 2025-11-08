@@ -38,11 +38,16 @@
   }
 }
 
+/* Prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-min__bubble { animation: none !important; transition: none !important; }
+}
+
 /* ---------- Wrapper ---------- */
 .ai-chat-min__wrap {
   position: fixed;
   right: 45px;
-  bottom: 35px;
+  bottom: calc(35px + env(safe-area-inset-bottom));
   z-index: 2147483640;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
@@ -74,13 +79,13 @@
 .ai-chat-min__panel {
   position: fixed;
   right: 20px;
-  bottom: 88px;
+  bottom: calc(88px + env(safe-area-inset-bottom));
   width: 360px;
   max-width: calc(100vw - 40px);
   height: 480px;
   display: flex;
   flex-direction: column;
-  background: var(--ai-surface); /* ensure explicit surface */
+  background: var(--ai-surface);
   color: var(--ai-text);
   border-radius: var(--ai-radius);
   box-shadow: var(--ai-elev);
@@ -100,8 +105,15 @@
   background: var(--ai-accent-strong);
   color: #fff;
 }
-.ai-chat-min__close { appearance: none; border: 0; background: transparent; color: inherit;
-  cursor: pointer; font-size: 20px; line-height: 1; opacity: .95; transition: opacity .12s ease, transform .12s ease; }
+.ai-chat-min__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 20px; line-height: 1; opacity: .95;
+  transition: opacity .12s ease, transform .12s ease;
+}
 .ai-chat-min__close:hover { opacity: 1; transform: translateY(-1px); }
 .ai-chat-min__close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
 
@@ -157,7 +169,7 @@
   line-height: 1.35;
   border: 1px solid var(--ai-border);
 }
-.ai-chat-min__msg.user { margin-left: auto; background: var(--ai-user-bubble); text-align: right;}
+.ai-chat-min__msg.user { margin-left: auto; background: var(--ai-user-bubble); text-align: right; }
 .ai-chat-min__msg.bot  { margin-right: auto; background: var(--ai-bot-bubble); color: var(--ai-text); }
 
 /* ---------- Clamp / More ---------- */
@@ -186,6 +198,6 @@
 
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
-  .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: 88px; height: min(70vh, 520px); }
+  .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
 }

@@ -7,10 +7,55 @@
   // Wait until <body> exists (assets can load after DOMContentLoaded on Website)
   function bodyReady(fn) {
     if (document.body) return fn();
-    const mo = new MutationObserver(() => {
-      if (document.body) { mo.disconnect(); fn(); }
-    });
+    const mo = new MutationObserver(() => { if (document.body) { mo.disconnect(); fn(); } });
     mo.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+  function getCookie(name) {
+    const v = document.cookie.split("; ").find(r => r.startsWith(name + "="));
+    return v ? decodeURIComponent(v.split("=")[1]) : "";
+  }
+  function getCsrf() {
+    return getCookie("csrf_token") || getCookie("frontend_csrf_token") || "";
+  }
+
+  async function fetchJSON(url, { method = "GET", body = undefined, headers = {} } = {}) {
+    const opts = {
+      method,
+      credentials: "same-origin",
+      headers: {
+        "Accept": "application/json",
+        ...(method !== "GET" ? { "Content-Type": "application/json", "X-CSRFToken": getCsrf(), "X-Openerp-CSRF-Token": getCsrf() } : {}),
+        ...headers,
+      },
+    };
+    if (body !== undefined) opts.body = typeof body === "string" ? body : JSON.stringify(body);
+    const res = await fetch(url, opts);
+    const isJSON = (res.headers.get("content-type") || "").includes("application/json");
+    let data = null;
+    try { data = isJSON ? await res.json() : null; } catch (_) {}
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  async function isUserLoggedIn() {
+    try {
+      const { ok, data } = await fetchJSON("/web/session/get_session_info", { method: "GET" });
+      return !!(ok && data && data.uid && Number.isInteger(data.uid) && data.uid > 0);
+    } catch { return false; }
+  }
+
+  async function probeCanLoad() {
+    try {
+      const { ok, status, data } = await fetchJSON("/ai_chat/can_load", { method: "POST", body: {} });
+      if (!ok && (status === 404 || status === 405)) return { mount: true };
+      if (!ok && (status === 401 || status === 403)) return { mount: false };
+      if (!ok) return { mount: true };
+      const d = unwrap(data);
+      if (d && typeof d === "object" && "show" in d) return { mount: !!d.show };
+      return { mount: true };
+    } catch { return { mount: true }; }
   }
 
   function buildUI(mount) {
@@ -22,16 +67,13 @@
     bubble.type = "button";
     bubble.setAttribute("aria-label", "Academy Ai");
 
-    // Use your logo instead of the emoji
     const icon = new Image();
-    icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
-    icon.alt = "";                // decorative (button already has aria-label)
-    icon.width = 45;              // bubble is 56x56
-    icon.height = 45;
+    icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png";
+    icon.alt = "";
+    icon.width = 45; icon.height = 45;
     icon.decoding = "async";
     icon.style.display = "block";
     icon.style.pointerEvents = "none";
-    // graceful fallback if image fails to load
     icon.addEventListener("error", () => { bubble.textContent = "💬"; });
     bubble.appendChild(icon);
 
@@ -67,6 +109,7 @@
 
     panel.appendChild(header); panel.appendChild(body); panel.appendChild(footer);
     wrap.appendChild(bubble); wrap.appendChild(panel);
+    (mount || document.body).appendChild(wrap);
 
     function toggle(open) {
       panel.hidden = (open === undefined) ? !panel.hidden : !open;
@@ -84,63 +127,124 @@
       body.scrollTop = body.scrollHeight;
     }
 
+    function appendBox(el) {
+      const row = document.createElement("div");
+      row.className = "ai-chat-min__msg bot";
+      row.appendChild(el);
+      body.appendChild(row);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function appendBotUI(ui) {
+      if (ui.title) {
+        const t = document.createElement("div");
+        t.className = "ai-title";
+        t.innerText = ui.title;
+        appendBox(t);
+      }
+      if (ui.summary) {
+        const s = document.createElement("div");
+        s.className = "ai-summary";
+        s.innerText = ui.summary;
+        appendBox(s);
+      }
+      if (ui.answer_md) {
+        const md = document.createElement("div");
+        md.className = "ai-md ai-md--clamp";
+        md.innerText = ui.answer_md;  // plain text for safety
+        const more = document.createElement("div");
+        more.className = "ai-more";
+        more.innerText = "Show more";
+        md.appendChild(more);
+        more.addEventListener("click", () => {
+          md.classList.toggle("ai-md--clamp");
+          more.innerText = md.classList.contains("ai-md--clamp") ? "Show more" : "Show less";
+        });
+        appendBox(md);
+      }
+      if (Array.isArray(ui.citations) && ui.citations.length) {
+        const c = document.createElement("div");
+        c.className = "ai-citations";
+        ui.citations.forEach(ci => {
+          const chip = document.createElement("span");
+          chip.className = "ai-chip";
+          chip.innerText = `${ci.file} p.${ci.page}`;
+          c.appendChild(chip);
+        });
+        appendBox(c);
+      }
+      if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
+        const s = document.createElement("div");
+        s.className = "ai-suggestions";
+        ui.suggestions.forEach(sug => {
+          const b = document.createElement("button");
+          b.className = "ai-suggest";
+          b.type = "button";
+          b.innerText = sug;
+          b.addEventListener("click", () => { input.value = b.textContent || ""; input.focus(); });
+          s.appendChild(b);
+        });
+        appendBox(s);
+      }
+    }
+
     async function sendMsg() {
       const q = input.value.trim();
       if (!q) return;
       appendMessage("user", q);
       input.value = "";
-
-      const headers = { "Content-Type": "application/json" };
-      const t = (document.cookie.match(/(^| )csrf_token=([^;]+)/) || [])[2]
-        || (document.cookie.match(/(^| )frontend_csrf_token=([^;]+)/) || [])[2];
-      if (t) { headers["X-Openerp-CSRF-Token"] = t; headers["X-CSRFToken"] = t; }
+      send.disabled = true;
 
       try {
-        const res = await fetch("/ai_chat/send", {
+        const { ok, status, data } = await fetchJSON("/ai_chat/send", {
           method: "POST",
-          headers,
-          body: JSON.stringify({ question: q }),
-          credentials: "same-origin",
+          body: { question: q },
         });
-        const raw = await res.json().catch(() => ({}));
-        const data = unwrap(raw);
-        if (res.ok && data && data.ok) appendMessage("bot", data.reply || "");
-        else appendMessage("bot", (data && data.reply) || "Network error.");
+
+        if (!ok && (status === 401 || status === 403)) {
+          // Lost auth — hide widget and stop
+          panel.hidden = true;
+          bubble.style.display = "none";
+          return;
+        }
+
+        const raw = unwrap(data || {});
+        if (ok && raw && raw.ok) {
+          if (raw.ui) appendBotUI(raw.ui);
+          else appendMessage("bot", raw.reply || "");
+        } else {
+          appendMessage("bot", (raw && raw.reply) || "Network error.");
+        }
       } catch (e) {
         console.error("AI Chat: send failed", e);
         appendMessage("bot", "Network error.");
+      } finally {
+        send.disabled = false;
       }
     }
+
     send.addEventListener("click", sendMsg);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
     });
-
-    (mount || document.body).appendChild(wrap);
-    console.info("AI Chat: mounted bubble");
   }
 
   async function init() {
-    try {
-      const res = await fetch("/ai_chat/can_load", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-        credentials: "same-origin",
-      });
-      const data = unwrap(await res.json());
-      console.info("AI Chat: readiness:", data);
-      if (data && data.show === true) {
-        const standalone = document.querySelector("#ai-chat-standalone");
-        buildUI(standalone || undefined);
-      } else {
-        // hidden for public or denied
-      }
-    } catch (e) {
-      console.warn("AI Chat: can_load probe failed; keeping hidden", e);
-    }
+    const logged = await isUserLoggedIn();
+    if (!logged) return; // do not mount widget for public users
+    const { mount } = await probeCanLoad();
+    if (!mount) return;
+    const standalone = document.querySelector("#ai-chat-standalone");
+    buildUI(standalone || undefined);
   }
 
-  bodyReady(init);
-})();
+  function boot() {
+    try { init(); } catch (e) { console.warn("AI Chat init failed", e); }
+  }
 
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
+})();
