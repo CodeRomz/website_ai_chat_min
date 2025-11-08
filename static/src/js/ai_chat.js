@@ -200,7 +200,7 @@
 
   const a = document.createElement('div');
   a.className = 'ai-md';
-  a.innerHTML = mdLiteToHtml(ui?.answer_md || '');
+  a.innerHTML = mdLiteToHtml(cleanAnswerMd(ui?.answer_md || ''));
   box.appendChild(a);
 
   if (Array.isArray(ui?.citations) && ui.citations.length) {
