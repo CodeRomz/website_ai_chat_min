@@ -369,13 +369,23 @@ class _GeminiProvider(_ProviderBase):
             generation_config={
                 "temperature": self.temperature,
                 "max_output_tokens": self.max_tokens,
-                "response_mime_type": "application/json",  # force JSON, no fences
+                "response_mime_type": "application/json",  # return raw JSON, no fences
             },
         )
-        r = model.generate_content(
-            [prompt, {"role": "user", "parts": [user_text]}],
-            request_options={"timeout": self.timeout},
-        )
+
+        try:
+            r = model.generate_content(
+                contents=[{"role": "user", "parts": [{"text": user_text}]}],
+                system_instruction=prompt,                # put your system preamble here
+                request_options={"timeout": self.timeout}
+            )
+        except Exception:
+            # ↩︎ Fallback for older SDKs (best-effort)
+            r = model.generate_content(
+                [{"role": "user", "parts": [{"text": f"{prompt}\n\n{user_text}"}]}],
+                request_options={"timeout": self.timeout}
+            )
+
         return (getattr(r, "text", None) or "").strip()
 
 
