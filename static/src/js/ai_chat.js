@@ -256,13 +256,41 @@ async function isUserLoggedIn() {
   }
 
   async function init() {
-    const logged = await isUserLoggedIn();
-    if (!logged) return; // do not mount widget for public users
-    const { mount } = await probeCanLoad();
-    if (!mount) return;
-    const standalone = document.querySelector("#ai-chat-standalone");
-    buildUI(standalone || undefined);
-  }
+  // Try the server-controlled probe first
+  let canMount = true;
+  try {
+    const csrf =
+      (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1]) ||
+      (document.cookie.match(/(?:^|;\s*)frontend_csrf_token=([^;]+)/)?.[1]) ||
+      "";
+    const r = await fetch("/ai_chat/can_load", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRFToken": csrf, "X-Openerp-CSRF-Token": csrf } : {}),
+      },
+      body: "{}",
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const d = (j && j.result) ? j.result : j;   // unwrap JSON-RPC if any
+      if (d && typeof d === "object" && "show" in d) canMount = !!d.show;
+    } else if (r.status === 401 || r.status === 403) {
+      canMount = false;
+    }
+  } catch { /* fall through */ }
+
+  if (!canMount) return;
+
+  // Fallback: if probe is missing or neutral, rely on session check
+  const logged = await isUserLoggedIn();
+  if (!logged) return;
+
+  const mountPoint = document.querySelector("#ai-chat-standalone");
+  buildUI(mountPoint || undefined);
+}
 
   function boot() {
     try { init(); } catch (e) { console.warn("AI Chat init failed", e); }
