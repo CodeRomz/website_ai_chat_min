@@ -12,6 +12,8 @@ import re as re_std
 import logging
 from typing import Dict, List, Tuple
 
+import json, re
+
 _logger = logging.getLogger(__name__)
 
 # ---------------- Defaults / Tunables (override via ICP) ----------------
@@ -32,6 +34,11 @@ DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
 
 ROUTER_RETRIEVE_T = 0.75
 ROUTER_OFFER_T = 0.45
+
+
+
+_FENCE_OPEN = re.compile(r'^\s*```[a-zA-Z0-9_-]*\s*')
+_FENCE_CLOSE = re.compile(r'\s*```\s*$')
 
 ASSISTANT_JSON_CONTRACT = """
 Return ONLY a JSON object with:
@@ -446,22 +453,50 @@ def _strip_md_fences(s: str) -> str:
     except Exception:
         return s
 
-def _extract_json_obj(text: str):
-    """Be liberal in what we accept: strip fences and pick the first {...} block."""
-    if not text:
+def extract_json_obj(s: str):
+    """Return a dict parsed from the first balanced JSON object inside s; else None."""
+    if not s:
         return None
-    s = _strip_md_fences(text).strip()
+    s = s.strip()
+
+    # strip leading/trailing code fences if present
+    if s.startswith("```"):
+        s = _FENCE_OPEN.sub("", s, count=1)
+        s = _FENCE_CLOSE.sub("", s, count=1).strip()
+
+    # fast path: exact JSON
     try:
         return json.loads(s)
     except Exception:
         pass
-    i, j = s.find("{"), s.rfind("}")
-    if i != -1 and j != -1 and j > i:
-        candidate = s[i:j+1]
-        try:
-            return json.loads(candidate)
-        except Exception:
-            return None
+
+    # scan for first balanced {...}
+    start = s.find("{")
+    if start == -1:
+        return None
+
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(s[start:i+1])
+                    except Exception:
+                        break
     return None
 
 # ---------------- HTTP Controller ----------------
