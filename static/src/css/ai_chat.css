@@ -216,3 +216,10 @@
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
 }
+
+
+/* Minimal reply mode: hide meta fields */
+.ai-chat-min__panel.minimal .ai-chat-min__title,
+.ai-chat-min__panel.minimal .ai-chat-min__summary {
+  display: none;
+}

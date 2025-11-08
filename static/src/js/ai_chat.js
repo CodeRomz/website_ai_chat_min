@@ -111,7 +111,7 @@
     bubble.appendChild(icon);
 
     const panel = document.createElement("div");
-    panel.className = "ai-chat-min__panel";
+    panel.className = "ai-chat-min__panel minimal";   // <- minimal mode ON
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
     panel.hidden = true;
@@ -169,6 +169,14 @@
     }
 
     // ---- MINIMALIST ANSWER RENDERING ----
+    function cleanAnswerMd(s) {
+  let t = String(s || '');
+  // Strip trivial filler the model sometimes adds
+  t = t.replace(/^\s*acknowledged the greeting\.?\s*/i, '');
+  t = t.replace(/^\s*acknowledged\.?\s*/i, '');
+  t = t.replace(/^\s*(hi|hello|hey)[\s,!.-]*/i, '');
+  return t.trim();
+}
     function appendBotUI(ui) {
   const row = document.createElement('div');
   row.className = 'ai-chat-min__msg bot';
