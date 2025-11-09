@@ -39,17 +39,14 @@ class ResConfigSettings(models.TransientModel):
         help="Only allow questions that match this regular expression (case-insensitive).\nLeave empty to allow all.",
         size=1024,
     )
+
     docs_folder = fields.Char(
         string="PDF Folder",
         config_parameter='website_ai_chat_min.docs_folder',
         help="Absolute server path of a folder containing PDF documents used for grounding.",
         size=1024,
     )
-    answer_only_from_docs = fields.Boolean(
-        string="Answer Only From Documents",
-        config_parameter='website_ai_chat_min.answer_only_from_docs',
-        help="If enabled, the assistant answers only when relevant document snippets are found.",
-    )
+
     privacy_url = fields.Char(
         string="Privacy Policy URL",
         config_parameter='website_ai_chat_min.privacy_url',

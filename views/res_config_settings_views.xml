@@ -33,11 +33,6 @@
                         <field name="allowed_regex"/>
                     </setting>
 
-                    <setting string="Answer Only From Documents"
-                             help="If enabled, reply only when relevant document snippets are found.">
-                        <field name="answer_only_from_docs"/>
-                    </setting>
-
                     <setting string="PDF Folder" help="Absolute server path with PDF docs to ground answers.">
                         <field name="docs_folder"/>
                     </setting>
