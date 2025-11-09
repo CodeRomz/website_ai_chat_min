@@ -17,6 +17,18 @@ import json, re
 
 _logger = logging.getLogger(__name__)
 
+# -----------------------------------------------------------------------------
+# Caching layer
+#
+# To speed up repeated lookups, we maintain a simple in-memory cache of
+# previously asked questions.  Each entry maps a tuple of (question text,
+# docs-only flag) to the AI's reply and the constructed UI payload.  This
+# reduces latency when users ask the same question multiple times and avoids
+# redundant document scans and provider calls.  Note: this cache lives in
+# process memory; it resets when the Odoo server restarts.  Administrators
+# can replace this with a more robust cache (e.g., Redis) if needed.
+_QA_CACHE: Dict[Tuple[str, bool], Dict[str, object]] = {}
+
 # ---------------- Defaults / Tunables (override via ICP) ----------------
 DEFAULT_RATE_LIMIT_MAX = 5
 DEFAULT_RATE_LIMIT_WINDOW = 15
@@ -28,7 +40,12 @@ AI_DEFAULT_TIMEOUT = 15
 AI_DEFAULT_TEMPERATURE = 0.2
 AI_DEFAULT_MAX_TOKENS = 512
 
-DOCS_DEFAULT_MAX_FILES = 40
+# Increase the default maximum number of files scanned during a single query.  The
+# user mentioned they have roughly 1000 documents and wants to ensure the
+# assistant scans as many as possible to surface accurate answers.  Note that
+# administrators can still override this value via the `docs_max_files` system
+# parameter.  Setting the default high avoids prematurely stopping the scan.
+DOCS_DEFAULT_MAX_FILES = 1000
 DOCS_DEFAULT_MAX_PAGES = 40
 DOCS_DEFAULT_MAX_HITS = 12
 DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
@@ -292,6 +309,14 @@ class _ProviderBase:
 
 class _OpenAIProvider(_ProviderBase):
     def generate(self, system_text: str, user_text: str) -> str:
+        """
+        Call the OpenAI chat completion API.  We do **not** specify a
+        `response_format` so the model is free to return plain text rather than
+        structured JSON.  Adding a JSON response format can cause the model
+        to announce itself as a JSON generator, which confused users.  Any
+        structured data (e.g., JSON fences) returned by the model is
+        post-processed downstream if present.
+        """
         def _call():
             from openai import OpenAI  # type: ignore
             client = OpenAI(api_key=self.api_key, timeout=self.timeout)
@@ -304,6 +329,7 @@ class _OpenAIProvider(_ProviderBase):
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
+                # Do not force JSON responses; let the model produce natural language
             )
             return (resp.choices[0].message.content or "").strip()
         return self._with_retries(_call)
@@ -319,6 +345,10 @@ class _GeminiProvider(_ProviderBase):
             generation_config={
                 "temperature": self.temperature,
                 "max_output_tokens": self.max_tokens,
+                # Do not force the model to return JSON.  When specifying
+                # `response_mime_type: "application/json"`, Gemini models may
+                # identify themselves as JSON generators.  Omitting this
+                # parameter produces natural language output instead.
             },
         )
 
@@ -505,6 +535,21 @@ class WebsiteAIChatController(http.Controller):
 
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
+        # ----------------------------------------------------------------------
+        # Caching
+        #
+        # To avoid redundant scans and API calls, check if we've seen this
+        # question before.  The cache key includes the question text and
+        # whether docs-only mode is enabled.  Note that the redacted
+        # version of the question is used to ensure consistent matches when
+        # PII redaction is on.  If a cached entry is found, return it
+        # immediately.  Otherwise continue with routing and retrieval.
+        cache_key = (outbound_q, cfg["only_docs"])
+        cached = _QA_CACHE.get(cache_key)
+        if cached:
+            # Return a copy to avoid accidental mutation of cached data
+            return {"ok": True, "reply": cached["reply"], "ui": dict(cached["ui"])}
+
         # Determine whether this particular request should operate in docs-only mode
         # When 'Answer Only from Documents' is enabled in settings, the chat will
         # always run in docs-only mode; otherwise it will use general AI assistance.
@@ -512,32 +557,35 @@ class WebsiteAIChatController(http.Controller):
 
         # ---------------- Routing & Retrieval ----------------
         route_action, confidence, route_reason = _router_decide(q, force=force)
+        # Collect relevant excerpts from PDFs.  When docs-only mode is enabled
+        # or the router decides to retrieve, walk through the configured
+        # documents folder.  Otherwise skip scanning to preserve latency.
         doc_snippets: List[Tuple[str, int, str]] = []
-        # Determine if we should search internal PDFs. Always search in docs-only mode or when
-        # the router indicates a retrieval is necessary.
-        need_docs_search = request_only_docs or route_action == "retrieve"
-        if need_docs_search:
-            t_scan0 = time.time()
-            try:
+        t_scan0 = time.time()
+        try:
+            if request_only_docs or route_action == "retrieve":
+                # Scan PDFs for snippets matching the query.  This call respects
+                # ICP thresholds like docs_max_files and docs_max_pages.
                 doc_snippets = _read_pdf_snippets(cfg["docs_folder"], outbound_q)
-            except Exception:
-                doc_snippets = []
-            scan_ms = int((time.time() - t_scan0) * 1000)
-        else:
-            scan_ms = 0
+        except Exception as e:
+            _logger.warning("PDF scan failed: %s", tools.ustr(e))
+        scan_ms = int((time.time() - t_scan0) * 1000)
 
-        # Immediate docs-only response if no snippets were found. This prompts the user to
-        # provide a document number or more precise query without calling the AI provider.
+        # Docs-only immediate response if no snippets
         if request_only_docs and not doc_snippets:
+            # When no document snippets are found in docs-only mode, return a simple
+            # message without any suggestions or citations.  The aim is to
+            # prompt the user to narrow their query, but avoid showing
+            # suggestions in a separate chip.
             ui = {
                 "title": "",
                 "summary": "",
-                "answer_md": _(
-                    "Please provide a document number or specific topic for a more detailed response."
-                ),
+                "answer_md": _("Please provide a document number or specific topic for a more detailed response."),
                 "citations": [],
                 "suggestions": [],
             }
+            # Cache the docs-only response so subsequent identical requests are fast.
+            _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
             return {"ok": True, "reply": ui["answer_md"], "ui": ui}
 
         # ---------------- Compose prompts ----------------
@@ -603,23 +651,38 @@ class WebsiteAIChatController(http.Controller):
         except Exception:
             pass
 
-        # Add a prefix when a document search was attempted. If no relevant document snippets
-        # were found, let the user know; if documents were found, list up to five distinct
-        # titles to ground the answer. For general queries, leave the response as-is.
+        # ------------------------------------------------------------------
+        # Add a user-friendly prefix based on document retrieval results.
+        # If a document search was attempted (docs-only mode or router
+        # instructed retrieval) and no snippets were found, inform the user.
+        # Otherwise, if snippets were found, mention the relevant documents
+        # before the AI's answer.  For general queries where no scan occurred,
+        # leave the prefix empty.
         prefix = ""
-        if 'need_docs_search' in locals() and need_docs_search:
-            if not doc_snippets:
-                prefix = _(
-                    "I can’t find any references from our internal documents. Here’s what I found: "
-                )
-            else:
-                try:
-                    titles = sorted({os.path.splitext(fn)[0] for fn, _, _ in doc_snippets})
-                    if titles:
-                        joined = ", ".join(f"‘{t}’" for t in titles[:5])
-                        prefix = _(f"According to these documents {joined}: ")
-                except Exception:
-                    pass
+        try:
+            if request_only_docs or route_action == "retrieve":
+                if not doc_snippets:
+                    prefix = _(
+                        "I can't find any references from our internal documents. Here’s what I found: "
+                    )
+                else:
+                    # Build a list of unique file base names (strip extensions)
+                    titles = []
+                    seen_titles = set()
+                    for fn, _page, _snippet in doc_snippets:
+                        base = os.path.splitext(fn)[0]
+                        if base not in seen_titles:
+                            seen_titles.add(base)
+                            titles.append(base)
+                    # Limit to a handful of titles to avoid overwhelming the user
+                    title_str = ", ".join(f"‘{t}’" for t in titles[:5])
+                    prefix = _(f"According to these documents {title_str}: ")
+        except Exception:
+            # If something goes wrong while building the prefix, fall back
+            prefix = ""
+
+        # Prepend the prefix to the answer text.  Doing this after stripping
+        # fences and JSON ensures that the prefix remains at the very start.
         answer_text = prefix + answer_text
 
         # Always return an empty list for citations and suggestions to keep the UI clean.
@@ -634,4 +697,6 @@ class WebsiteAIChatController(http.Controller):
         # Truncate excessively long answers
         MAX_ANSWER_CHARS = 1800
         ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
+        # Store the result in the cache for future identical queries.
+        _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
