@@ -77,7 +77,7 @@
   const bubble = document.createElement("button");
   bubble.className = "ai-chat-min__bubble";
   bubble.setAttribute("type", "button");
-  bubble.setAttribute("aria-label", "Open AI chat");
+  bubble.setAttribute("aria-label", "CodeRomz");
 
       // Use your logo instead of the emoji
     const icon = new Image();
