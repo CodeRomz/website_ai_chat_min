@@ -28,7 +28,8 @@ AI_DEFAULT_TIMEOUT = 15
 AI_DEFAULT_TEMPERATURE = 0.2
 AI_DEFAULT_MAX_TOKENS = 512
 
-DOCS_DEFAULT_MAX_FILES = 40
+# Increase default max files to accommodate larger document repositories
+DOCS_DEFAULT_MAX_FILES = 1000
 DOCS_DEFAULT_MAX_PAGES = 40
 DOCS_DEFAULT_MAX_HITS = 12
 DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
@@ -198,6 +199,9 @@ def _router_decide(q: str, force: bool = False) -> tuple[str, float, str]:
     if force:
         return "retrieve", 1.0, "forced"
     s = _router_score(q)
+    # Decide whether to retrieve documents based on score
+    if s >= ROUTER_OFFER_T:
+        return "retrieve", s, f"score={s:.2f}"
     return "answer", s, f"score={s:.2f}"
 
 
@@ -516,6 +520,13 @@ class WebsiteAIChatController(http.Controller):
         route_action, confidence, route_reason = _router_decide(q, force=force)
         doc_snippets: List[Tuple[str, int, str]] = []
         t_scan0 = time.time()
+        # If the router indicates retrieval, scan the configured PDF folder
+        if route_action == "retrieve":
+            try:
+                doc_snippets = _read_pdf_snippets(cfg["docs_folder"], q)
+            except Exception as e:
+                _logger.error("[AIChat] Document scan error: %s", tools.ustr(e), exc_info=True)
+                doc_snippets = []
 
         scan_ms = int((time.time() - t_scan0) * 1000)
 
@@ -596,6 +607,23 @@ class WebsiteAIChatController(http.Controller):
                 answer_text = answer_text[:idx].rstrip()
         except Exception:
             pass
+
+        # Custom prefix based on document retrieval
+        if not doc_snippets:
+            # No document matches – prefix the answer to indicate external source
+            prefix = _("I can't find any references from our internal documents. From the web I found: ")
+        else:
+            # Documents found – list titles and prefix the answer accordingly
+            titles = []
+            for fn, page, snip in doc_snippets:
+                name = os.path.splitext(fn)[0]
+                if name not in titles:
+                    titles.append(name)
+            limited = titles[:5]
+            quoted = ", ".join(f"'{t}'" for t in limited)
+            prefix = _("According to these documents %s: ") % quoted
+
+        answer_text = (prefix or "") + (answer_text or "")
 
         # Always return an empty list for citations and suggestions to keep the UI clean.
         ui = {
