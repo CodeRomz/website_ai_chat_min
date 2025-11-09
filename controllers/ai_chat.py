@@ -29,6 +29,35 @@ _logger = logging.getLogger(__name__)
 # can replace this with a more robust cache (e.g., Redis) if needed.
 _QA_CACHE: Dict[Tuple[str, bool], Dict[str, object]] = {}
 
+# -----------------------------------------------------------------------------
+# Document listing helper
+#
+# Users sometimes ask to list the available documents.  This helper collects
+# filenames from the configured docs folder.  It walks subdirectories and
+# returns a sorted list of files with supported extensions.
+def _list_documents(root_folder: str) -> List[str]:
+    if not root_folder or not os.path.exists(root_folder):
+        return []
+    doc_list: List[str] = []
+    for dirpath, _, filenames in os.walk(root_folder):
+        for fn in filenames:
+            if fn.lower().endswith((".pdf", ".docx", ".xlsx", ".pptx")):
+                doc_list.append(fn)
+    return sorted(doc_list)
+
+# Determine whether the user's query requests a list of documents.  This
+# function covers commands like "list all documents" and natural
+# questions like "what are the documents available?".
+def _is_list_all_documents(q: str) -> bool:
+    text = (q or "").lower().strip()
+    # explicit list/show commands
+    if re_std.match(r"^(list|show)\b.*\b(documents|docs)\b", text):
+        return True
+    # general queries about available documents
+    if re_std.search(r"\b(documents|docs)\b.*\bavailable\b", text):
+        return True
+    return False
+
 # ---------------- Defaults / Tunables (override via ICP) ----------------
 DEFAULT_RATE_LIMIT_MAX = 5
 DEFAULT_RATE_LIMIT_WINDOW = 15
@@ -45,9 +74,19 @@ AI_DEFAULT_MAX_TOKENS = 512
 # assistant scans as many as possible to surface accurate answers.  Note that
 # administrators can still override this value via the `docs_max_files` system
 # parameter.  Setting the default high avoids prematurely stopping the scan.
-DOCS_DEFAULT_MAX_FILES = 1000
-DOCS_DEFAULT_MAX_PAGES = 40
-DOCS_DEFAULT_MAX_HITS = 12
+DOCS_DEFAULT_MAX_FILES = 0
+# When zero or negative, `_read_pdf_snippets` treats this as unlimited and
+# will scan all pages of each document.  A default of 0 ensures that the
+# assistant checks every page when scanning internal documents.
+DOCS_DEFAULT_MAX_PAGES = 0
+# Allow unlimited hits by default.  When set to 0 or a negative value,
+# `_read_pdf_snippets` interprets this as "no limit" and will collect
+# all matching snippets found in the scanned documents.  Administrators
+# can override this via the `docs_max_hits` system parameter; providing
+# a positive integer restores the cap on collected snippets.  Setting
+# the default to 0 ensures the bot scans every file and page for
+# relevant content, as requested by the user.
+DOCS_DEFAULT_MAX_HITS = 0
 DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
 
 ROUTER_OFFER_T = 0.45
@@ -243,8 +282,22 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
         return []
 
     max_files = _int_icp("website_ai_chat_min.docs_max_files", DOCS_DEFAULT_MAX_FILES)
+    # When max_files is zero or negative, treat it as unlimited.  In this
+    # mode, the scanning loop will traverse all documents in the root folder
+    # without stopping early based on file count.
+    unlimited_files = max_files <= 0
     max_pages = _int_icp("website_ai_chat_min.docs_max_pages", DOCS_DEFAULT_MAX_PAGES)
+    # When max_pages is zero or negative, treat it as unlimited.  This
+    # allows scanning all pages of each document.  Otherwise, only the
+    # specified number of pages are scanned per document.
+    unlimited_pages = max_pages <= 0
     max_hits = _int_icp("website_ai_chat_min.docs_max_hits", DOCS_DEFAULT_MAX_HITS)
+
+    # When max_hits is zero or negative, treat it as unlimited.  In this
+    # mode, the scanning loop will collect all matching snippets without
+    # prematurely stopping.  This allows the assistant to scan every
+    # document and page for relevant matches.
+    unlimited_hits = max_hits <= 0
 
     results: List[Tuple[str, int, str]] = []
     ql = (query or "").lower()
@@ -260,12 +313,15 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
                 continue
             path = os.path.join(dirpath, fn)
             files_scanned += 1
-            if files_scanned > max_files:
+            if not unlimited_files and files_scanned > max_files:
                 break
             try:
                 with open(path, "rb") as f:
                     reader = pypdf.PdfReader(f)
-                    page_count = min(len(reader.pages), max_pages)
+                    # Determine how many pages to scan.  If unlimited_pages is True
+                    # (i.e., max_pages <= 0), scan all pages.  Otherwise
+                    # respect the configured max_pages.
+                    page_count = len(reader.pages) if unlimited_pages else min(len(reader.pages), max_pages)
                     for idx in range(page_count):
 
                         page = reader.pages[idx]
@@ -279,20 +335,30 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
                             end = min(len(text), pos + 240)
                             snippet = text[start:end].replace("\n", " ").strip()
                             results.append((fn, idx + 1, snippet))
-                            if len(results) >= max_hits:
+                            # When unlimited_hits is False (i.e., max_hits > 0), stop
+                            # collecting snippets once we've reached the configured
+                            # limit.  Otherwise continue gathering all matches.
+                            if not unlimited_hits and len(results) >= max_hits:
                                 break
-                    if len(results) >= max_hits or budget_exhausted:
+                    # Break out of the page loop if we've collected enough
+                    # snippets (when limited) or if the budget is exhausted.
+                    if (not unlimited_hits and len(results) >= max_hits) or budget_exhausted:
                         break
             except Exception as e:
                 _logger.warning("Failed to read PDF %s: %s", path, tools.ustr(e))
-        if len(results) >= max_hits or budget_exhausted:
+        # Break out of the file scanning loop if we've collected enough
+        # snippets (when limited) or if the budget is exhausted.
+        if (not unlimited_hits and len(results) >= max_hits) or budget_exhausted:
             break
 
     _logger.info(
         "[AIChat] Scan finished: files=%s hits=%s budget_ms=%s elapsed_ms=%d",
         files_scanned, len(results), int((time.time() - t0) * 1000),
     )
-    return results[:max_hits]
+    # Return all collected snippets when unlimited_hits is True.  Otherwise
+    # slice the list to respect the configured max_hits.  This ensures
+    # callers do not receive more snippets than requested.
+    return results if unlimited_hits else results[:max_hits]
 
 # ---------------- Provider adapters ----------------
 class _ProviderBase:
@@ -399,15 +465,18 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
         )
     else:
         lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
+
     lines.append(
         "Formatting: Keep it compact. No more than 10 bullets or 200 words. "
         "Always include a short 'summary'."
     )
 
     if snippets:
-        lines.append("Relevant excerpts (cite using [File p.X]):")
+        # Present relevant excerpts without page numbers.  Removing page numbers
+        # prevents the assistant from citing page positions in the answer.
+        lines.append("Relevant excerpts:")
         for fn, page, text in snippets:
-            lines.append(f"[{fn} p.{page}] {text}")
+            lines.append(f"[{fn}] {text}")
     return "\n".join(lines)
 
 # ---------------- Config loader ----------------
@@ -546,6 +615,43 @@ class WebsiteAIChatController(http.Controller):
 
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
+        # ------------------------------------------------------------------
+        # Special handling: list all documents
+        #
+        # If the user explicitly asks to list available documents, return a
+        # bullet list of filenames from the docs folder.  This bypasses the
+        # AI provider entirely and caches the result under a dedicated key.
+        if _is_list_all_documents(q):
+            list_key = ("__list_docs__", cfg["only_docs"])
+            cached_list = _QA_CACHE.get(list_key)
+            if cached_list:
+                return {"ok": True, "reply": cached_list["reply"], "ui": dict(cached_list["ui"])}
+            docs = _list_documents(cfg["docs_folder"])
+            if not docs:
+                answer_list = _(
+                    "No documents were found in the configured folder. Please check your settings."
+                )
+            else:
+                # Show up to 50 documents to avoid flooding the UI
+                MAX_LIST = 50
+                truncated = docs[:MAX_LIST]
+                bullets = "\n".join(f"• {fn}" for fn in truncated)
+                suffix = "" if len(docs) <= MAX_LIST else _(
+                    f"\n\n(Showing {MAX_LIST} of {len(docs)} documents)"
+                )
+                answer_list = f"{bullets}{suffix}"
+            ui = {
+                "title": "Document list",
+                "summary": _(
+                    f"{len(docs)} document{'s' if len(docs) != 1 else ''} found."
+                ) if docs else "",
+                "answer_md": answer_list,
+                "citations": [],
+                "suggestions": [],
+            }
+            _QA_CACHE[list_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
+            return {"ok": True, "reply": ui["answer_md"], "ui": ui}
+
         # ----------------------------------------------------------------------
         # Caching
         #
@@ -659,6 +765,13 @@ class WebsiteAIChatController(http.Controller):
             idx = answer_text.lower().find('"citations"')
             if idx >= 0:
                 answer_text = answer_text[:idx].rstrip()
+        except Exception:
+            pass
+
+        # Remove any inline page number citations like [File p.1, p.2] or [fn p.3].
+        # These patterns are added by the model when instructed to cite pages.
+        try:
+            answer_text = re_std.sub(r"\[[^\]]*? p\.\d+(?:,\s*p\.\d+)*\]", "", answer_text)
         except Exception:
             pass
 
