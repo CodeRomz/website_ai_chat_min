@@ -1,26 +1,41 @@
 /*!
- * Website AI Chat (minimal widget)
- * - Preserves existing names used by the template
- * - Adds robust JSON salvage for Gemini/OpenAI odd responses
- * - Keeps "minimal" panel by default; expands when citations are present
+ * Website AI Chat (minimal widget + launcher bubble)
+ * - Always render a round launcher button.
+ * - Open the panel only if allowed by /ai_chat/can_load.
+ * - If not allowed, clicking launcher shows a brief notice.
+ * - Keeps existing names and behavior; adds only what's necessary.
  */
 
 (function () {
   "use strict";
 
-  // ---------- DOM refs created at boot ----------
-  let panel, body, input, send;
+  let panel, body, input, send, launcher;
+  let canUse = false; // set after probe
 
   // ---------- Boot ----------
-  function boot() {
-    init();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
   }
 
-  function init() {
-    probeCanLoad().then(ok => {
-      if (!ok) return;
-      buildUI();
-    });
+  function boot() {
+    buildLauncher();               // always show the floating bubble
+    initAuthAndPanel();            // check auth and create panel (hidden) if allowed
+  }
+
+  async function initAuthAndPanel() {
+    try {
+      canUse = await probeCanLoad();
+    } catch { canUse = false; }
+    if (canUse) {
+      buildPanel(true);            // build but keep hidden until launcher click
+      launcher.classList.remove("disabled");
+      launcher.title = "Open AI chat";
+    } else {
+      launcher.classList.add("disabled");
+      launcher.title = "Sign in to use AI chat";
+    }
   }
 
   // ---------- Probes ----------
@@ -40,13 +55,44 @@
     } catch { return false; }
   }
 
-  // ---------- UI ----------
-  function buildUI() {
-    // container
+  // ---------- Launcher (bubble) ----------
+  function buildLauncher() {
+    launcher = document.createElement("button");
+    launcher.className = "ai-launcher";
+    launcher.setAttribute("aria-label", "Open AI chat");
+    launcher.innerHTML = `<span class="ai-launcher__label">AI</span>`;
+    document.body.appendChild(launcher);
+
+    launcher.addEventListener("click", () => {
+      if (!canUse) {
+        notify("Please sign in to use AI chat.");
+        return;
+      }
+      if (!panel) buildPanel(true);
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) input && input.focus();
+    });
+  }
+
+  function notify(msg) {
+    // tiny unobtrusive toast near the launcher
+    const n = document.createElement("div");
+    n.className = "ai-toast";
+    n.textContent = msg;
+    document.body.appendChild(n);
+    setTimeout(() => n.classList.add("show"), 10);
+    setTimeout(() => { n.classList.remove("show"); n.remove(); }, 2200);
+  }
+
+  // ---------- Panel (chat window) ----------
+  function buildPanel(hiddenInitially) {
+    if (panel) return; // build once
+
     panel = document.createElement("div");
     panel.className = "ai-chat-min__panel minimal";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
+    panel.hidden = !!hiddenInitially;
 
     const header = document.createElement("div");
     header.className = "ai-chat-min__header";
@@ -76,9 +122,8 @@
     panel.appendChild(footer);
     document.body.appendChild(panel);
 
-    // events
     header.querySelector(".ai-chat-min__close").addEventListener("click", () => {
-      panel.remove();
+      panel.hidden = true;
     });
     send.addEventListener("click", () => sendMsg());
     input.addEventListener("keydown", (ev) => {
@@ -92,7 +137,6 @@
   function appendMessage(who, text) {
     const row = document.createElement("div");
     row.className = `ai-chat-min__msg ${who}`;
-
     const bubble = document.createElement("div");
     bubble.className = "ai-box";
     bubble.textContent = String(text || "");
@@ -109,16 +153,13 @@
   }
 
   function mdLiteToHtml(s) {
-    // very small subset: bold, italic, inline code, lists, line breaks
     let h = String(s || "");
     h = h.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     h = h.replace(/\*([^*]+)\*/g, "<em>$1</em>");
     h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
-    // simple lists
     h = h.replace(/^\s*-\s+(.*)$/gim, "<li>$1</li>");
     h = h.replace(/(<li>.*<\/li>)/gims, "<ul>$1</ul>");
-    // paragraph breaks
     h = h.replace(/\n{2,}/g, "<br/>");
     return h;
   }
@@ -126,16 +167,8 @@
   function extractJsonSafe(s) {
     if (!s) return null;
     try { return JSON.parse(s); } catch {}
-    // fenced
-    try {
-      const stripped = stripFences(s);
-      if (stripped) return JSON.parse(stripped);
-    } catch {}
-    // balanced braces
-    try {
-      const inner = findBalancedObject(s);
-      if (inner) return JSON.parse(inner);
-    } catch {}
+    try { const x = stripFences(s); return x ? JSON.parse(x) : null; } catch {}
+    try { const x = findBalancedObject(s); return x ? JSON.parse(x) : null; } catch {}
     return null;
   }
 
@@ -156,17 +189,12 @@
     for (let i = start; i < s.length; i++) {
       const ch = s[i];
       if (ch === "{") depth++;
-      else if (ch === "}") {
-        depth--;
-        if (depth === 0) return s.slice(start, i + 1);
-      }
+      else if (ch === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
     }
     return null;
   }
 
-  // ---------- Rendering ----------
   function appendBotUI(ui) {
-    // First pass: if answer_md actually contains the JSON object, salvage it
     try {
       const maybe = extractJsonSafe(ui?.answer_md || "");
       if (maybe && (maybe.answer_md || maybe.summary || maybe.title)) {
@@ -180,7 +208,6 @@
       }
     } catch {}
 
-    // Final safety: if answer_md still looks like an object, pluck the fields
     if (typeof ui?.answer_md === "string" && ui.answer_md.trim().startsWith("{")) {
       const looseGet = (src, key) => {
         const re = new RegExp(`"${key}"\\s*:\\s*"(.*?)"`, "is");
@@ -193,7 +220,6 @@
       const ss = looseGet(ui.answer_md, "summary");   if (ss && !ui.summary) ui.summary = ss;
     }
 
-    // Minimal mode unless there are citations (doc answer)
     if (Array.isArray(ui?.citations) && ui.citations.length > 0) {
       panel.classList.remove("minimal");
     } else {
@@ -250,10 +276,7 @@
     input.value = "";
     send.disabled = true;
     try {
-      const data = await fetchJSON("/ai_chat/send", {
-        method: "POST",
-        body: { question: q }
-      });
+      const data = await fetchJSON("/ai_chat/send", { method: "POST", body: { question: q } });
       const raw = data || {};
       if (raw && raw.ui) {
         appendBotUI(raw.ui);
@@ -262,7 +285,7 @@
       } else {
         appendBotUI({ answer_md: "No answer returned.", citations: [], suggestions: [] });
       }
-    } catch (e) {
+    } catch {
       appendBotUI({ answer_md: "The AI service is temporarily unavailable. Please try again shortly.", citations: [], suggestions: [] });
     } finally {
       send.disabled = false;
@@ -276,14 +299,17 @@
     const method = (opts.method || "GET").toUpperCase();
     const headers = { Accept: "application/json" };
     const csrf = getCookie("csrf_token") || getCookie("CSRF-TOKEN") || getCookie("X-Openerp-CSRF-Token");
+    let body = undefined;
+
     if (method !== "GET") {
       headers["Content-Type"] = "application/json";
       if (csrf) {
         headers["X-CSRFToken"] = csrf;
         headers["X-Openerp-CSRF-Token"] = csrf;
       }
+      body = opts.body ? JSON.stringify(opts.body) : "{}"; // ensure valid JSON for Odoo's json route
     }
-    const body = opts.body ? JSON.stringify(opts.body) : undefined;
+
     const r = await fetch(url, { method, headers, body, credentials: "include" });
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("application/json")) {
@@ -296,12 +322,5 @@
     const parts = (`; ${document.cookie}`).split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(";").shift();
     return null;
-  }
-
-  // Kick it off
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
   }
 })();
