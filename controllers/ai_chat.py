@@ -320,7 +320,7 @@ def _normalize_message_from_request(question_param: Optional[str] = None) -> str
 # Controller
 class AiChatController(http.Controller):
 
-    @http.route("/ai_chat/can_load", type="json", auth="public", csrf=True, methods=["POST"])
+    @http.route("/ai_chat/can_load", type="json", auth="user", csrf=True, methods=["POST"])
     def can_load(self):
         """Login gate for mounting the widget; returns a minimal boolean."""
         try:
@@ -330,7 +330,7 @@ class AiChatController(http.Controller):
             _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
             return {"show": False}
 
-    @http.route("/ai_chat/send", type="json", auth="public", csrf=True, methods=["POST"])
+    @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def send(self, question=None):
         """
         Validates, composes prompt, calls provider with retries,
