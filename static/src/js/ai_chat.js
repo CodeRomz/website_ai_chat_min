@@ -144,11 +144,6 @@
     toggleWrap.appendChild(aiAssistPill);
     toggleWrap.appendChild(docsOnlyPill);
 
-    // Banner shown when Docs Only mode is active
-    const docsBanner = document.createElement("div");
-    docsBanner.className = "docs-only-banner";
-    docsBanner.textContent = "Answering from documents only.";
-    docsBanner.hidden = true;
 
     // Body (message list)
     const body = document.createElement("div");
@@ -170,7 +165,7 @@
     // Assemble the panel
     panel.appendChild(header);
     panel.appendChild(toggleWrap);
-    panel.appendChild(docsBanner);
+    // Do not add a docs-only banner to keep the design consistent with AI Assist
     panel.appendChild(body);
     panel.appendChild(footer);
     wrap.appendChild(bubble);
@@ -184,11 +179,11 @@
       if (docsOnly) {
         aiAssistPill.classList.remove("active");
         docsOnlyPill.classList.add("active");
-        docsBanner.hidden = false;
+        // No banner toggling
       } else {
         aiAssistPill.classList.add("active");
         docsOnlyPill.classList.remove("active");
-        docsBanner.hidden = true;
+        // No banner toggling
       }
     }
     aiAssistPill.addEventListener("click", () => {

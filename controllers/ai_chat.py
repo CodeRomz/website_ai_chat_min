@@ -655,6 +655,15 @@ class WebsiteAIChatController(http.Controller):
             )
         except Exception:
             pass
+        # Remove any trailing JSON (e.g., citations) from the answer.  If the word
+        # "citations" appears in the answer text, truncate everything from
+        # that word onward to prevent JSON leakage in the UI.
+        try:
+            idx = answer_text.lower().find('"citations"')
+            if idx >= 0:
+                answer_text = answer_text[:idx].rstrip()
+        except Exception:
+            pass
 
         # Always return an empty list for citations and suggestions to keep the UI clean.
         ui = {
