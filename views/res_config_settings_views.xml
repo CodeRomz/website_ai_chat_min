@@ -24,11 +24,6 @@
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="Public chat (no login)"
-                             help="Allow anonymous website visitors to see and use the AI chat.">
-                        <field name="public_enabled"/>
-                    </setting>
-
                     <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
                         <field name="system_prompt"/>
                     </setting>

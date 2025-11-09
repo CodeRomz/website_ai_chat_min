@@ -107,14 +107,6 @@ class ResConfigSettings(models.TransientModel):
         size=256,
     )
 
-    # NEW: make chat public (no login)
-    public_enabled = fields.Boolean(
-        string="Public chat (no login)",
-        config_parameter='website_ai_chat_min.public_enabled',
-        help="Allow anonymous website visitors to see and use the AI chat.",
-        default=False,
-    )
-
     @api.constrains('docs_folder')
     def _check_docs_folder(self):
         for rec in self:
