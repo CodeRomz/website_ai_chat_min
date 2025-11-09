@@ -413,35 +413,108 @@ class _OpenAIProvider(_ProviderBase):
 
 class _GeminiProvider(_ProviderBase):
     def generate(self, prompt: str, user_text: str) -> str:
-        import google.generativeai as genai
-        model_name = self.model or "gemini-2.5-flash"
-        genai.configure(api_key=self.api_key)
+        """
+        Generate a response from Gemini using plain text.
 
+        This method configures the generative model with the current
+        temperature and token limits and avoids forcing JSON output.  A
+        system instruction is supplied separately from the user text when
+        supported by the SDK; otherwise the two are concatenated in a
+        fallback call.
+
+        :param prompt: System instructions to guide the assistant.
+        :param user_text: The user's question (already redacted if
+            necessary).
+        :returns: The model's reply as a plain string.
+        """
+        import google.generativeai as genai
+        genai.configure(api_key=self.api_key)
+        model_name = self.model or "gemini-2.5-flash"
         model = genai.GenerativeModel(
             model_name,
             generation_config={
                 "temperature": self.temperature,
                 "max_output_tokens": self.max_tokens,
-                # Do not force the model to return JSON.  When specifying
-                # `response_mime_type: "application/json"`, Gemini models may
-                # identify themselves as JSON generators.  Omitting this
-                # parameter produces natural language output instead.
+            },
+        )
+        try:
+            # Preferred call signature: separate system instruction.
+            r = model.generate_content(
+                contents=[{"role": "user", "parts": [{"text": user_text}]}],
+                system_instruction=prompt,
+                request_options={"timeout": self.timeout},
+            )
+        except Exception:
+            # Fallback for SDKs that don't support system_instruction.
+            r = model.generate_content(
+                [{"role": "user", "parts": [{"text": f"{prompt}\n\n{user_text}"}]}],
+                request_options={"timeout": self.timeout},
+            )
+        return (getattr(r, "text", None) or "").strip()
+
+    def generate_with_file_search(self, prompt: str, user_text: str, store_name: str) -> str:
+        """
+        Generate a response using Gemini's File Search tool.
+
+        When a FileSearchStore name is provided, this method constructs a
+        File Search tool configuration and passes it to the generative model.
+        The model retrieves relevant document snippets from the store and
+        incorporates them into its response.  Multiple fallbacks ensure
+        graceful degradation if the SDK version or arguments differ.
+
+        :param prompt: System preamble instructions.
+        :param user_text: The user's question.
+        :param store_name: Name of the FileSearchStore (e.g.
+            "fileSearchStores/my-file-store").
+        :returns: The assistant's reply as a string.
+        """
+        import google.generativeai as genai
+        genai.configure(api_key=self.api_key)
+        # Attempt to build typed tool configurations; fall back to dicts if
+        # imports fail or types are unavailable.
+        try:
+            from google.genai import types  # type: ignore
+            fs_tool = types.Tool(
+                file_search=types.FileSearch(
+                    file_search_store_names=[store_name]
+                )
+            )
+            gen_config = types.GenerateContentConfig(tools=[fs_tool])
+        except Exception:
+            fs_tool = {"file_search": {"file_search_store_names": [store_name]}}
+            gen_config = {"tools": [fs_tool]}
+
+        model_name = self.model or "gemini-2.5-flash"
+        model = genai.GenerativeModel(
+            model_name,
+            generation_config={
+                "temperature": self.temperature,
+                "max_output_tokens": self.max_tokens,
             },
         )
 
         try:
             r = model.generate_content(
                 contents=[{"role": "user", "parts": [{"text": user_text}]}],
-                system_instruction=prompt,                # put your system preamble here
-                request_options={"timeout": self.timeout}
+                system_instruction=prompt,
+                request_options={"timeout": self.timeout},
+                config=gen_config,
             )
         except Exception:
-            # ↩︎ Fallback for older SDKs (best-effort)
-            r = model.generate_content(
-                [{"role": "user", "parts": [{"text": f"{prompt}\n\n{user_text}"}]}],
-                request_options={"timeout": self.timeout}
-            )
-
+            # Fallback: merge prompt and question while preserving config.
+            try:
+                r = model.generate_content(
+                    [{"role": "user", "parts": [{"text": f"{prompt}\n\n{user_text}"}]}],
+                    request_options={"timeout": self.timeout},
+                    config=gen_config,
+                )
+            except Exception:
+                # Final fallback: call without File Search.  This may return a
+                # plausible answer but will not include retrieved context.
+                r = model.generate_content(
+                    [{"role": "user", "parts": [{"text": user_text}]}],
+                    request_options={"timeout": self.timeout},
+                )
         return (getattr(r, "text", None) or "").strip()
 
 
@@ -495,6 +568,10 @@ def _get_ai_config():
     redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
 
 
+    # Load additional configuration for optional Gemini File Search integration.
+    file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
+
     return {
         "provider": provider,
         "api_key": api_key,
@@ -507,6 +584,9 @@ def _get_ai_config():
         "temperature": temperature,
         "max_tokens": max_tokens,
         "redact_pii": redact_pii,
+        # New fields: file search configuration
+        "file_search_store": file_search_store,
+        "file_search_enabled": file_search_enabled,
     }
 
 # ---------------- Markdown fence/JSON extraction helpers (NEW) ----------------
@@ -680,7 +760,9 @@ class WebsiteAIChatController(http.Controller):
         doc_snippets: List[Tuple[str, int, str]] = []
         t_scan0 = time.time()
         try:
-            if request_only_docs or route_action == "retrieve":
+            if use_file_search:
+                doc_snippets = []
+            elif request_only_docs or route_action == "retrieve":
                 # Scan PDFs for snippets matching the query.  This call respects
                 # ICP thresholds like docs_max_files and docs_max_pages.
                 doc_snippets = _read_pdf_snippets(cfg["docs_folder"], outbound_q)
@@ -782,9 +864,14 @@ class WebsiteAIChatController(http.Controller):
         # Otherwise, if snippets were found, mention the relevant documents
         # before the AI's answer.  For general queries where no scan occurred,
         # leave the prefix empty.
+        # Determine a prefix for the answer based on document retrieval results.  When
+        # using Gemini File Search, omit any prefix so the model's response
+        # stands on its own.  Otherwise, add a notice if no local snippets
+        # were found or mention the document titles if they were.  This
+        # behaviour mirrors the legacy scanner logic.
         prefix = ""
         try:
-            if request_only_docs or route_action == "retrieve":
+            if not use_file_search and (request_only_docs or route_action == "retrieve"):
                 if not doc_snippets:
                     prefix = _(
                         "I can't find any references from our internal documents. Here’s what I found: "
@@ -802,7 +889,7 @@ class WebsiteAIChatController(http.Controller):
                     title_str = ", ".join(f"‘{t}’" for t in titles[:5])
                     prefix = _(f"According to these documents {title_str}: ")
         except Exception:
-            # If something goes wrong while building the prefix, fall back
+            # If something goes wrong while building the prefix, fall back to empty
             prefix = ""
 
         # Prepend the prefix to the answer text.  Doing this after stripping

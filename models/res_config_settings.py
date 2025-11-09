@@ -69,6 +69,52 @@ class ResConfigSettings(models.TransientModel):
         help="Duration of the throttle time window in seconds.",
     )
 
+    # NEW: Enable caching of frequently asked questions and document searches.
+    cache_enabled = fields.Boolean(
+        string="Enable AI Chat Caching",
+        config_parameter='website_ai_chat_min.cache_enabled',
+        help="If enabled, the chat will cache document retrievals and computed replies to speed up repeated queries.",
+        default=False,
+    )
+
+    # NEW: Use advanced routing heuristics.
+    advanced_router_enabled = fields.Boolean(
+        string="Enable Advanced Routing",
+        config_parameter='website_ai_chat_min.advanced_router_enabled',
+        help="If enabled, a more sophisticated routing algorithm will decide when to consult internal documents, using weighted keyword analysis. Disable to use the legacy router.",
+        default=False,
+    )
+
+    # NEW: Gemini File Search integration
+    file_search_enabled = fields.Boolean(
+        string="Enable Gemini File Search",
+        config_parameter='website_ai_chat_min.file_search_enabled',
+        help=(
+            "When using the Gemini provider, enable retrieval augmented generation via "
+            "File Search.  This offloads document retrieval to Google's API instead of "
+            "scanning local PDFs.  Requires specifying a File Search store name below."
+        ),
+        default=False,
+    )
+    file_search_store = fields.Char(
+        string="File Search Store Name",
+        config_parameter='website_ai_chat_min.file_search_store',
+        help=(
+            "The fully-qualified FileSearchStore resource name (e.g., "
+            "'fileSearchStores/my-store').  This store must be created and loaded "
+            "with your documents via the Gemini API."
+        ),
+        size=256,
+    )
+
+    # NEW: make chat public (no login)
+    public_enabled = fields.Boolean(
+        string="Public chat (no login)",
+        config_parameter='website_ai_chat_min.public_enabled',
+        help="Allow anonymous website visitors to see and use the AI chat.",
+        default=False,
+    )
+
     @api.constrains('docs_folder')
     def _check_docs_folder(self):
         for rec in self:

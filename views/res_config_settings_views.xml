@@ -24,6 +24,11 @@
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
+                    <setting string="Public chat (no login)"
+                             help="Allow anonymous website visitors to see and use the AI chat.">
+                        <field name="public_enabled"/>
+                    </setting>
+
                     <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
                         <field name="system_prompt"/>
                     </setting>
@@ -53,6 +58,26 @@
 
                     <setting string="Rate Limit: Window (sec)" help="Duration of the throttle window in seconds.">
                         <field name="rate_limit_window"/>
+                    </setting>
+
+                    <!-- NEW: caching and advanced router toggles -->
+                    <setting string="Enable AI Chat Caching"
+                             help="If enabled, the chat caches document retrievals and computed replies to speed up repeated queries.">
+                        <field name="cache_enabled"/>
+                    </setting>
+                    <setting string="Enable Advanced Routing"
+                             help="Use weighted keyword analysis to decide when to search the document repository. Disable to use the legacy router.">
+                        <field name="advanced_router_enabled"/>
+                    </setting>
+
+                    <!-- NEW: Gemini File Search options -->
+                    <setting string="Enable Gemini File Search"
+                             help="When using the Gemini provider, offload document retrieval to a FileSearchStore instead of scanning local documents.  Requires specifying the store name below.">
+                        <field name="file_search_enabled"/>
+                    </setting>
+                    <setting string="File Search Store Name"
+                             help="Fully-qualified FileSearchStore resource (e.g., 'fileSearchStores/my-store') that has been populated with your documents via the Gemini API.">
+                        <field name="file_search_store"/>
                     </setting>
 
                 </block>
