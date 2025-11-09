@@ -646,6 +646,15 @@ class WebsiteAIChatController(http.Controller):
                 pass
         # Remove any code fences from the answer text
         answer_text = _strip_md_fences(answer_text.strip())
+        # Remove known suggestion strings (e.g., document number/code hints) from the answer
+        try:
+            answer_text = re_std.sub(
+                r"Please include the document number/code.*?to narrow the result\.\s*", "",
+                answer_text,
+                flags=re_std.I,
+            )
+        except Exception:
+            pass
 
         # Always return an empty list for citations and suggestions to keep the UI clean.
         ui = {
