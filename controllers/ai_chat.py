@@ -212,10 +212,21 @@ def _router_score(q: str) -> float:
     return min(score, 1.0)
 
 def _router_decide(q: str, force: bool = False) -> tuple[str, float, str]:
+    """
+    Decide whether to retrieve document snippets or rely on general AI.
+
+    This implementation always returns "retrieve" so that every question
+    triggers a scan of the configured documents folder.  This ensures the
+    assistant looks into internal documents for answers, as requested by
+    the user.  The confidence score is set based on the original router
+    score to preserve logging context.  The reason string identifies that
+    retrieval was forced.
+    """
     if force:
         return "retrieve", 1.0, "forced"
+    # Compute a nominal score for logging purposes; always retrieve
     s = _router_score(q)
-    return "answer", s, f"score={s:.2f}"
+    return "retrieve", s, f"forced_retrieve score={s:.2f}"
 
 
 # ---------------- PDF retrieval (chunked, budgeted) ----------------
@@ -390,7 +401,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
         lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
     lines.append(
         "Formatting: Keep it compact. No more than 10 bullets or 200 words. "
-        "Always include a short 'summary'. If many topics appear, ask for the document number/code."
+        "Always include a short 'summary'."
     )
 
     if snippets:
