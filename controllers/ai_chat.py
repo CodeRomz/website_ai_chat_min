@@ -620,27 +620,46 @@ class WebsiteAIChatController(http.Controller):
             )
 
         # ---------------- Compose a simple UI payload ----------------
-        # We intentionally avoid parsing JSON returned by the model.  Whatever
-        # the provider sends back is treated as plain text.  Fenced
-        # markdown/code blocks are stripped for safety.  Citations are
-        # attached only when the user explicitly requested docs-only and
-        # snippets were found.  This ensures no raw JSON leaks through the
-        # reply channel while still allowing citations to be displayed.
+        # Parse the provider reply if it appears to be JSON.  When the reply
+        # contains a JSON object with an "answer_md" key, extract that as
+        # the answer text and use any provided citations.  Otherwise treat
+        # the reply as plain text.  This prevents JSON from being shown
+        # directly to the user while still allowing us to surface the
+        # useful "answer_md" field returned by some providers.
+        answer_text: str = (reply or "").strip()
+        citations: List[dict] = []
+        try:
+            parsed = extract_json_obj(reply or "")
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            try:
+                # Pull answer_md or fallback to any text fields
+                answer_text = str(parsed.get("answer_md") or parsed.get("text") or parsed.get("reply") or answer_text)
+                if isinstance(parsed.get("citations"), list):
+                    citations = list(parsed.get("citations"))[:8]
+            except Exception:
+                pass
+        # Remove any code fences from the answer text
+        answer_text = _strip_md_fences(answer_text.strip())
+
         ui = {
             "title": "",
             "summary": "",
-            "answer_md": _strip_md_fences((reply or "").strip()),
-            "citations": [],
+            "answer_md": answer_text,
+            "citations": citations,
             "suggestions": [],
         }
 
-        # Attach citations only when docs-only is active and snippets exist
-        if request_only_docs and doc_snippets:
+        # Attach citations only when docs-only is active and no citations were returned
+        if request_only_docs and not ui["citations"] and doc_snippets:
             ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
 
         # Suggest including a document code when the retrieval context is weak or broad
         if len(doc_snippets) == 0 or len(doc_snippets) > 8:
-            hint = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
+            hint = _(
+                "Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."
+            )
             ui["suggestions"].append(hint)
 
         # Truncate excessively long answers

@@ -207,10 +207,20 @@
   border: 1px solid rgba(var(--ai-accent-rgb), .35); }
 
 .ai-suggestions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-.ai-suggestions .ai-suggest { border: 1px solid var(--ai-border); background: #fafafa;
-  border-radius: var(--ai-pill); padding: 6px 12px; cursor: pointer;
-  transition: background .12s ease, transform .08s ease; }
-.ai-suggestions .ai-suggest:hover { background: rgba(var(--ai-accent-rgb), .10); transform: translateY(-1px); }
+/* Suggestion chips shown for follow-up prompts */
+.ai-suggestions .ai-suggest {
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  background: rgba(var(--ai-accent-rgb), .12);
+  color: rgb(var(--ai-accent-rgb));
+  transition: background .12s ease, transform .08s ease;
+}
+.ai-suggestions .ai-suggest:hover {
+  background: rgba(var(--ai-accent-rgb), .18);
+  transform: translateY(-1px);
+}
 
 /* ---------- Toggle pills & docs-only banner ---------- */
 /* Container for the AI Assist / Docs Only pills */
