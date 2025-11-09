@@ -5,7 +5,6 @@ from odoo import http, tools, _
 from odoo.http import request
 from odoo.exceptions import AccessDenied
 
-
 import json
 import os
 import time
@@ -35,8 +34,6 @@ DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
 
 ROUTER_OFFER_T = 0.45
 
-
-
 _FENCE_OPEN = re.compile(r'^\s*```[a-zA-Z0-9_-]*\s*')
 _FENCE_CLOSE = re.compile(r'\s*```\s*$')
 
@@ -46,9 +43,11 @@ try:
 except Exception:
     regex_safe = None
 
+
 # ---------------- ICP helpers ----------------
 def _icp():
     return request.env["ir.config_parameter"].sudo()
+
 
 def _get_icp_param(name, default=""):
     try:
@@ -57,8 +56,10 @@ def _get_icp_param(name, default=""):
     except Exception:
         return default
 
+
 def _bool_icp(key: str, default: bool = False) -> bool:
     return tools.str2bool(_get_icp_param(key, "1" if default else "0"))
+
 
 def _int_icp(key: str, default: int) -> int:
     try:
@@ -66,11 +67,13 @@ def _int_icp(key: str, default: int) -> int:
     except Exception:
         return default
 
+
 def _float_icp(key: str, default: float) -> float:
     try:
         return float(_get_icp_param(key, default))
     except Exception:
         return default
+
 
 # ---------------- Auth / visibility ----------------
 def _is_logged_in(env) -> bool:
@@ -79,9 +82,11 @@ def _is_logged_in(env) -> bool:
     except Exception:
         return False
 
+
 def _can_show_widget(env) -> bool:
     # Bubble visible to logged-in users only
     return _is_logged_in(env)
+
 
 # ---------------- Rate limiting ----------------
 def _client_ip():
@@ -91,6 +96,7 @@ def _client_ip():
         return ip
     except Exception:
         return "0.0.0.0"
+
 
 def _get_rate_limits():
     try:
@@ -102,6 +108,7 @@ def _get_rate_limits():
     except Exception:
         window = DEFAULT_RATE_LIMIT_WINDOW
     return max(1, max_req), max(1, window)
+
 
 def _throttle() -> bool:
     try:
@@ -122,6 +129,7 @@ def _throttle() -> bool:
         return allowed
     except Exception:
         return True
+
 
 # ---------------- Query normalization / scope ----------------
 def _normalize_message_from_request(question_param=None) -> str:
@@ -145,6 +153,7 @@ def _normalize_message_from_request(question_param=None) -> str:
         pass
     return ""
 
+
 def _match_allowed(pattern: str, text: str, timeout_ms=100) -> bool:
     """Allow-list regex with timeout to resist ReDoS. Fail-closed if 'regex' is unavailable."""
     if not pattern:
@@ -156,6 +165,7 @@ def _match_allowed(pattern: str, text: str, timeout_ms=100) -> bool:
         return False
     except Exception:
         return False
+
 
 # ---------------- PII redaction ----------------
 def _redact_pii(text: str) -> str:
@@ -169,6 +179,7 @@ def _redact_pii(text: str) -> str:
     except Exception:
         return text
 
+
 # ---------------- Selective RAG router ----------------
 DOC_TRIGGERS = [
     r"\bqms\b", r"\bsop(s)?\b", r"\bpolicy\b", r"\bprocedure\b", r"\bwork instruction\b",
@@ -180,6 +191,7 @@ DOC_ID_PREFIXES = [
     r"\b[A-Z]{2,5}-[A-Z]{2,5}-(PRC|POL|WI)-\d{3,6}\b",
     r"\bIT-SOP-\d+\b", r"\bHR-POL-\d+\b",
 ]
+
 
 def _router_score(q: str) -> float:
     text = (q or "").lower()
@@ -194,15 +206,11 @@ def _router_score(q: str) -> float:
         score += 0.15
     return min(score, 1.0)
 
+
 def _router_decide(q: str, force: bool = False) -> tuple[str, float, str]:
     if force:
         return "retrieve", 1.0, "forced"
     s = _router_score(q)
-    # If the router score meets or exceeds the threshold, request retrieval;
-    # otherwise default to a general answer. This allows us to search
-    # internal documents only when relevant keywords are present.
-    if s >= ROUTER_OFFER_T:
-        return "retrieve", s, f"score={s:.2f}"
     return "answer", s, f"score={s:.2f}"
 
 
@@ -271,6 +279,7 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
     )
     return results[:max_hits]
 
+
 # ---------------- Provider adapters ----------------
 class _ProviderBase:
     def __init__(self, api_key: str, model: str, timeout: int, temperature: float, max_tokens: int):
@@ -279,8 +288,10 @@ class _ProviderBase:
         self.timeout = timeout
         self.temperature = temperature
         self.max_tokens = max_tokens
+
     def generate(self, system_text: str, user_text: str) -> str:
         raise NotImplementedError
+
     def _with_retries(self, fn):
         delays = [0.5, 1.0]
         last_exc = None
@@ -295,6 +306,7 @@ class _ProviderBase:
             raise last_exc
         return ""
 
+
 class _OpenAIProvider(_ProviderBase):
     def generate(self, system_text: str, user_text: str) -> str:
         def _call():
@@ -304,15 +316,22 @@ class _OpenAIProvider(_ProviderBase):
             if system_text:
                 messages.append({"role": "system", "content": system_text})
             messages.append({"role": "user", "content": user_text})
+            # Request a plain‑text response from the model instead of forcing a JSON
+            # payload.  Passing the `response_format` parameter tells OpenAI to
+            # behave as a JSON generator; without a corresponding contract the
+            # model may reply with meta‑comments such as "I am a JSON generator".
+            # Removing this parameter encourages natural language output for
+            # general chat responses.
             resp = client.chat.completions.create(
                 model=(self.model or OPENAI_DEFAULT_MODEL),
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                response_format={"type": "json_object"},
             )
             return (resp.choices[0].message.content or "").strip()
+
         return self._with_retries(_call)
+
 
 class _GeminiProvider(_ProviderBase):
     def generate(self, prompt: str, user_text: str) -> str:
@@ -320,19 +339,19 @@ class _GeminiProvider(_ProviderBase):
         model_name = self.model or "gemini-2.5-flash"
         genai.configure(api_key=self.api_key)
 
+        # natural language responses.
         model = genai.GenerativeModel(
             model_name,
             generation_config={
                 "temperature": self.temperature,
                 "max_output_tokens": self.max_tokens,
-                "response_mime_type": "application/json",  # return raw JSON, no fences
             },
         )
 
         try:
             r = model.generate_content(
                 contents=[{"role": "user", "parts": [{"text": user_text}]}],
-                system_instruction=prompt,                # put your system preamble here
+                system_instruction=prompt,  # put your system preamble here
                 request_options={"timeout": self.timeout}
             )
         except Exception:
@@ -350,6 +369,7 @@ def _get_provider(cfg: dict) -> _ProviderBase:
     if provider == "gemini":
         return _GeminiProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
     return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
+
 
 # ---------------- Prompt composition ----------------
 def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]], only_docs: bool) -> str:
@@ -376,6 +396,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
             lines.append(f"[{fn} p.{page}] {text}")
     return "\n".join(lines)
 
+
 # ---------------- Config loader ----------------
 def _get_ai_config():
     provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
@@ -391,7 +412,6 @@ def _get_ai_config():
     max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
     redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
 
-
     return {
         "provider": provider,
         "api_key": api_key,
@@ -406,6 +426,7 @@ def _get_ai_config():
         "redact_pii": redact_pii,
     }
 
+
 # ---------------- Markdown fence/JSON extraction helpers (NEW) ----------------
 def _strip_md_fences(s: str) -> str:
     """Remove ```...``` fences (with optional language tag) from a single block."""
@@ -417,6 +438,7 @@ def _strip_md_fences(s: str) -> str:
         return (m.group(1).strip() if m else t)
     except Exception:
         return s
+
 
 def extract_json_obj(s: str):
     """Return a dict parsed from the first balanced JSON object inside s; else None."""
@@ -459,10 +481,11 @@ def extract_json_obj(s: str):
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(s[start:i+1])
+                        return json.loads(s[start:i + 1])
                     except Exception:
                         break
     return None
+
 
 # ---------------- HTTP Controller ----------------
 class WebsiteAIChatController(http.Controller):
@@ -518,26 +541,33 @@ class WebsiteAIChatController(http.Controller):
         request_only_docs = cfg["only_docs"]
 
         # ---------------- Routing & Retrieval ----------------
+        # Decide whether to consult internal documents based on the router score or
+        # an explicit docs‑only mode.  When docs‑only is enabled, we always
+        # attempt a retrieval; otherwise we only retrieve if the router
+        # suggests it (i.e., the score meets the threshold defined in
+        # _router_decide).
         route_action, confidence, route_reason = _router_decide(q, force=force)
         doc_snippets: List[Tuple[str, int, str]] = []
-        t_scan0 = time.time()
-        # If the router asked for retrieval, scan the configured PDF folder
-        # for relevant excerpts.  Otherwise, leave doc_snippets empty.
-        if route_action == "retrieve":
+        # Determine if we need to search the docs folder.  In docs‑only mode
+        # (`request_only_docs`), we must always search; in general mode we
+        # search only when the router returns "retrieve".
+        need_docs_search = request_only_docs or route_action == "retrieve"
+        if need_docs_search:
+            t_scan0 = time.time()
             try:
-                doc_snippets = _read_pdf_snippets(cfg["docs_folder"], q)
-            except Exception as e:
-                _logger.error("[AIChat] Document scan error: %s", tools.ustr(e), exc_info=True)
+                doc_snippets = _read_pdf_snippets(cfg["docs_folder"], outbound_q)
+            except Exception:
+                # ensure doc_snippets remains a list on exceptions
                 doc_snippets = []
+            scan_ms = int((time.time() - t_scan0) * 1000)
+        else:
+            scan_ms = 0
 
-        scan_ms = int((time.time() - t_scan0) * 1000)
-
-        # Docs-only immediate response if no snippets
+        # If the user explicitly requested docs‑only answers and no
+        # references were found, return an immediate guidance message.  This
+        # avoids calling the AI provider unnecessarily and encourages the user
+        # to supply a more specific query (e.g., a document number).
         if request_only_docs and not doc_snippets:
-            # When no document snippets are found in docs-only mode, return a simple
-            # message without any suggestions or citations.  The aim is to
-            # prompt the user to narrow their query, but avoid showing
-            # suggestions in a separate chip.
             ui = {
                 "title": "",
                 "summary": "",
@@ -558,7 +588,8 @@ class WebsiteAIChatController(http.Controller):
         try:
             reply = provider.generate(system_text, outbound_q)
         except Exception as e:
-            _logger.error("[AIChat] Provider error (%s/%s): %s", cfg["provider"], cfg["model"] or "<default>", tools.ustr(e), exc_info=True)
+            _logger.error("[AIChat] Provider error (%s/%s): %s", cfg["provider"], cfg["model"] or "<default>",
+                          tools.ustr(e), exc_info=True)
             return {"ok": False, "reply": _("The AI service is temporarily unavailable. Please try again shortly.")}
         finally:
             ai_ms = int((time.time() - t_ai0) * 1000)
@@ -610,29 +641,30 @@ class WebsiteAIChatController(http.Controller):
         except Exception:
             pass
 
-        # -- AI Chat: custom prefix based on document retrieval --
-        # Only prefix the answer if we actually attempted a document search.
+        # ----- Custom prefix based on document retrieval result -----
+        # When a document search was attempted, inform the user whether
+        # matching references were found.  If no snippets were found, prefix
+        # the answer with a gentle notice and still relay the model's
+        # response.  If snippets were found, cite up to five distinct
+        # document titles.  Otherwise, leave the answer unchanged.
         prefix = ""
-        if route_action == "retrieve":
+        # Determine if a docs search was actually performed.  Use the same
+        # flag we computed earlier to avoid prefixing general chat replies.
+        if need_docs_search:
             if not doc_snippets:
-                # No matches found in internal docs; clarify that the answer is from general knowledge
                 prefix = _(
-                    "I can't find any references from our internal documents. Here’s what I found: "
+                    "I can’t find any references from our internal documents. Here’s what I found: "
                 )
             else:
-                # Matches found – list up to five document titles (without extensions) for context
-                titles: List[str] = []
-                for fn, page, snip in doc_snippets:
-                    name = os.path.splitext(fn)[0]
-                    if name not in titles:
-                        titles.append(name)
-                limited = titles[:5]
-                quoted = ", ".join(f"'{t}'" for t in limited)
-                prefix = _(
-                    "According to these documents %s: "
-                ) % quoted
-
-        answer_text = (prefix or "") + (answer_text or "")
+                # Build a comma‑separated list of unique document titles
+                try:
+                    titles = sorted({os.path.splitext(fn)[0] for fn, _, _ in doc_snippets})
+                    if titles:
+                        joined = ", ".join(f"\u2018{t}\u2019" for t in titles[:5])
+                        prefix = _(f"According to these documents {joined}: ")
+                except Exception:
+                    pass
+        answer_text = prefix + answer_text
 
         # Always return an empty list for citations and suggestions to keep the UI clean.
         ui = {
