@@ -463,7 +463,7 @@ class WebsiteAIChatController(http.Controller):
             _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
             return {"show": False}
 
-    @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
+    @http.route("/ai_chat/send", type="json", auth="public", csrf=True, methods=["POST"])
     def send(self, question=None):
         """
         Validates, composes prompt,

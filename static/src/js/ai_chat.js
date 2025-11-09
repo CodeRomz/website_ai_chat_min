@@ -15,7 +15,7 @@
 
   async function fetchJSON(
   url,
-  { method = "GET", body = undefined, headers = {}, timeoutMs = 12000 } = {}
+  { method = "GET", body = undefined, headers = {}, timeoutMs = 20000 } = {}
 ) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -73,7 +73,7 @@
 
   async function probeCanLoad() {
     try {
-      const { ok, status, data } = await fetchJSON("/ai_chat/can_load", { method: "POST", body: {} });
+      const { ok, status, data } = await fetchJSON("/ai_chat/can_load", { method: "POST", body: { jsonrpc: "2.0", method: "call", params: {} } });
       if (!ok && (status === 404 || status === 405)) return { mount: true };
       if (!ok && (status === 401 || status === 403)) return { mount: false };
       if (!ok) return { mount: true };
@@ -230,7 +230,8 @@
       try {
         const { ok, status, data } = await fetchJSON("/ai_chat/send", {
           method: "POST",
-          body: { question: q },
+          body: { jsonrpc: "2.0", method: "call", params: { question: q } },
+          timeoutMs: 25000,
         });
 
         // If unauthorized, hide panel and bubble
