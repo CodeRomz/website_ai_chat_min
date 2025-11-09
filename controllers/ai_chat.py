@@ -98,15 +98,6 @@ def _is_logged_in(env) -> bool:
     except Exception:
         return False
 
-def _require_group_if_configured(env) -> bool:
-    xmlid = _get_icp_param("website_ai_chat_min.require_group_xmlid", "")
-    if not xmlid:
-        return True
-    try:
-        return env.user.has_group(xmlid)
-    except Exception:
-        return False  # fail-closed
-
 def _can_show_widget(env) -> bool:
     # Bubble visible to logged-in users only
     return _is_logged_in(env)
@@ -535,9 +526,6 @@ class WebsiteAIChatController(http.Controller):
         Validates, selectively retrieves PDF context, composes prompt,
         calls provider with retries, and returns a compact, structured reply.
         """
-        if not _require_group_if_configured(request.env):
-            raise AccessDenied("You do not have access to AI Chat.")
-
         if not _throttle():
             return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
 
