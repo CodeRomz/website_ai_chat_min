@@ -589,12 +589,16 @@ class WebsiteAIChatController(http.Controller):
 
         # Docs-only immediate response if no snippets
         if request_only_docs and not doc_snippets:
+            # When no document snippets are found in docs-only mode, return a simple
+            # message without any suggestions or citations.  The aim is to
+            # prompt the user to narrow their query, but avoid showing
+            # suggestions in a separate chip.
             ui = {
                 "title": "",
-                "summary": _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."),
-                "answer_md": _("I don’t know based on the current documents."),
+                "summary": "",
+                "answer_md": _("Please provide a document number or specific topic for a more detailed response."),
                 "citations": [],
-                "suggestions": [_("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")],
+                "suggestions": [],
             }
             return {"ok": True, "reply": ui["answer_md"], "ui": ui}
 
@@ -635,32 +639,22 @@ class WebsiteAIChatController(http.Controller):
         if isinstance(parsed, dict):
             try:
                 # Pull answer_md or fallback to any text fields
-                answer_text = str(parsed.get("answer_md") or parsed.get("text") or parsed.get("reply") or answer_text)
-                if isinstance(parsed.get("citations"), list):
-                    citations = list(parsed.get("citations"))[:8]
+                answer_text = str(
+                    parsed.get("answer_md") or parsed.get("text") or parsed.get("reply") or answer_text
+                )
             except Exception:
                 pass
         # Remove any code fences from the answer text
         answer_text = _strip_md_fences(answer_text.strip())
 
+        # Always return an empty list for citations and suggestions to keep the UI clean.
         ui = {
             "title": "",
             "summary": "",
             "answer_md": answer_text,
-            "citations": citations,
+            "citations": [],
             "suggestions": [],
         }
-
-        # Attach citations only when docs-only is active and no citations were returned
-        if request_only_docs and not ui["citations"] and doc_snippets:
-            ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
-
-        # Suggest including a document code when the retrieval context is weak or broad
-        if len(doc_snippets) == 0 or len(doc_snippets) > 8:
-            hint = _(
-                "Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result."
-            )
-            ui["suggestions"].append(hint)
 
         # Truncate excessively long answers
         MAX_ANSWER_CHARS = 1800

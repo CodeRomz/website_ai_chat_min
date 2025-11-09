@@ -258,35 +258,7 @@
       a.innerHTML = mdLiteToHtml(cleanAnswerMd(ui?.answer_md || ""));
       box.appendChild(a);
 
-      // Show citations only in docs-only mode or if provided directly from the backend
-      if (Array.isArray(ui?.citations) && ui.citations.length) {
-        const cwrap = document.createElement("div");
-        cwrap.className = "ai-citations";
-        ui.citations.slice(0, 5).forEach(ci => {
-          const chip = document.createElement("span");
-          chip.className = "ai-chip";
-          chip.textContent = `${ci.file} p.${ci.page}`;
-          cwrap.appendChild(chip);
-        });
-        box.appendChild(cwrap);
-      }
-
-      // Show suggestions if present
-      if (Array.isArray(ui?.suggestions) && ui.suggestions.length) {
-        const swrap = document.createElement("div");
-        swrap.className = "ai-suggestions";
-        ui.suggestions.forEach(sug => {
-          const chip = document.createElement("span");
-          chip.className = "ai-suggest";
-          chip.textContent = String(sug);
-          chip.addEventListener("click", () => {
-            input.value = String(sug);
-            sendMsg();
-          });
-          swrap.appendChild(chip);
-        });
-        box.appendChild(swrap);
-      }
+      // Citations and suggestions are intentionally omitted for a cleaner UI
 
       row.appendChild(box);
       body.appendChild(row);
