@@ -548,17 +548,13 @@ class WebsiteAIChatController(http.Controller):
         if len(q) > 4000:
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
-        # Pull explicit force flag (optional) and docsOnly override
-        docs_only_override = None
+        # Pull explicit force flag (optional).  Docs-only override has been removed.
         try:
             raw = request.httprequest.get_data(cache=False, as_text=True)
             if raw:
                 payload = json.loads(raw)
                 if isinstance(payload, dict):
                     force = bool(payload.get("force", force))
-                    # allow per-request override of docs-only toggle (boolean)
-                    if "docsOnly" in payload:
-                        docs_only_override = bool(payload["docsOnly"])
         except Exception:
             pass
 
@@ -572,7 +568,9 @@ class WebsiteAIChatController(http.Controller):
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
         # Determine whether this particular request should operate in docs-only mode
-        request_only_docs = docs_only_override if docs_only_override is not None else cfg["only_docs"]
+        # When 'Answer Only from Documents' is enabled in settings, the chat will
+        # always run in docs-only mode; otherwise it will use general AI assistance.
+        request_only_docs = cfg["only_docs"]
 
         # ---------------- Routing & Retrieval ----------------
         route_action, confidence, route_reason = _router_decide(q, force=force)

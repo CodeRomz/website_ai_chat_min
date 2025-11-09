@@ -132,18 +132,6 @@
     header.appendChild(title);
     header.appendChild(closeBtn);
 
-    // Toggle pills for AI Assist vs Docs Only
-    const toggleWrap = document.createElement("div");
-    toggleWrap.className = "ai-toggle-wrap";
-    const aiAssistPill = document.createElement("span");
-    aiAssistPill.className = "scope-pill ai-assist active";
-    aiAssistPill.textContent = "AI Assist";
-    const docsOnlyPill = document.createElement("span");
-    docsOnlyPill.className = "scope-pill docs-only";
-    docsOnlyPill.textContent = "Docs Only";
-    toggleWrap.appendChild(aiAssistPill);
-    toggleWrap.appendChild(docsOnlyPill);
-
 
     // Body (message list)
     const body = document.createElement("div");
@@ -162,38 +150,15 @@
     footer.appendChild(input);
     footer.appendChild(send);
 
-    // Assemble the panel
+    // Assemble the panel without a docs-only toggle or banner
     panel.appendChild(header);
-    panel.appendChild(toggleWrap);
-    // Do not add a docs-only banner to keep the design consistent with AI Assist
     panel.appendChild(body);
     panel.appendChild(footer);
     wrap.appendChild(bubble);
     wrap.appendChild(panel);
     (mount || document.body).appendChild(wrap);
 
-    // State: whether docs only mode is active
-    let docsOnly = false;
-
-    function updateToggle() {
-      if (docsOnly) {
-        aiAssistPill.classList.remove("active");
-        docsOnlyPill.classList.add("active");
-        // No banner toggling
-      } else {
-        aiAssistPill.classList.add("active");
-        docsOnlyPill.classList.remove("active");
-        // No banner toggling
-      }
-    }
-    aiAssistPill.addEventListener("click", () => {
-      docsOnly = false;
-      updateToggle();
-    });
-    docsOnlyPill.addEventListener("click", () => {
-      docsOnly = true;
-      updateToggle();
-    });
+    // No docs-only toggle; mode is determined by server configuration
 
     // Function to toggle open/close of panel
     function toggle(open) {
@@ -272,7 +237,7 @@
       try {
         const { ok, status, data } = await fetchJSON("/ai_chat/send", {
           method: "POST",
-          body: { question: q, docsOnly },
+          body: { question: q },
         });
 
         // If unauthorized, hide panel and bubble

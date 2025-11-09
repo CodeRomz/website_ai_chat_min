@@ -224,40 +224,6 @@
 
 /* ---------- Toggle pills & docs-only banner ---------- */
 /* Container for the AI Assist / Docs Only pills */
-.ai-toggle-wrap {
-  display: flex;
-  gap: 6px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--ai-border);
-  background: var(--ai-soft);
-}
-/* Base pill style */
-.scope-pill {
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: var(--ai-pill);
-  cursor: pointer;
-  user-select: none;
-  border: 1px solid var(--ai-border);
-  background: var(--ai-soft);
-  color: var(--ai-text);
-  transition: background .12s ease, color .12s ease;
-}
-/* Active pill */
-.scope-pill.active {
-  background: rgba(var(--ai-accent-rgb), .12);
-  color: rgb(var(--ai-accent-rgb));
-  border-color: rgba(var(--ai-accent-rgb), .35);
-}
-/* Banner shown when Docs Only mode is enabled */
-.docs-only-banner {
-  font-size: 12px;
-  padding: 6px 12px;
-  text-align: center;
-  background: rgba(var(--ai-accent-rgb), .08);
-  color: rgb(var(--ai-accent-rgb));
-  border-bottom: 1px solid rgba(var(--ai-accent-rgb), .2);
-}
 
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
