@@ -80,6 +80,10 @@
   bubble.setAttribute("aria-label", "Open AI chat");
   bubble.textContent = "💬";
 
+
+
+
+
   // Panel
   const panel = document.createElement("div");
   panel.className = "ai-chat-min__panel";
