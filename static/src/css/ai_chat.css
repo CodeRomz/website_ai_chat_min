@@ -83,7 +83,7 @@
   bottom: calc(88px + env(safe-area-inset-bottom));
   width: 360px;
   max-width: calc(100vw - 40px);
-  height: 480px;
+  height: 500px;
   display: flex;
   flex-direction: column;
   background: var(--ai-surface);
@@ -212,12 +212,46 @@
   transition: background .12s ease, transform .08s ease; }
 .ai-suggestions .ai-suggest:hover { background: rgba(var(--ai-accent-rgb), .10); transform: translateY(-1px); }
 
+/* ---------- Toggle pills ---------- */
+.ai-toggle-wrap {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ai-border);
+  background: var(--ai-soft);
+}
+.scope-pill {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: var(--ai-pill);
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--ai-border);
+  background: var(--ai-soft);
+  color: var(--ai-text);
+  transition: background .12s ease, color .12s ease;
+}
+.scope-pill.active {
+  background: rgba(var(--ai-accent-rgb), .12);
+  color: rgb(var(--ai-accent-rgb));
+  border-color: rgba(var(--ai-accent-rgb), .35);
+}
+
+/* Docs-only banner */
+.docs-only-banner {
+  font-size: 12px;
+  padding: 6px 12px;
+  text-align: center;
+  background: rgba(var(--ai-accent-rgb), .08);
+  color: rgb(var(--ai-accent-rgb));
+  border-bottom: 1px solid rgba(var(--ai-accent-rgb), .2);
+}
+
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
 }
-
 
 /* Minimal reply mode: hide meta fields */
 .ai-chat-min__panel.minimal .ai-chat-min__title,
