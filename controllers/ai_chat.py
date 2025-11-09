@@ -133,7 +133,6 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
         lines.append(base)
     else:
         lines.append("Be concise and helpful. Use markdown when formatting lists or steps.")
-    # NOTE: snippets are NOT used anymore (PDF retrieval removed), but param stays for future ext.
     return "\n".join(lines)
 
 
