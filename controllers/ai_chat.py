@@ -389,7 +389,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
     else:
         lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
     lines.append(
-        "Formatting: Keep it compact. No more than 10 bullets or 200 words in 'answer_md'. "
+        "Formatting: Keep it compact. No more than 10 bullets or 200 words. "
         "Always include a short 'summary'. If many topics appear, ask for the document number/code."
     )
 
