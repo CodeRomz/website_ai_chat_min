@@ -3,13 +3,6 @@
   // Unwrap Odoo JSON-RPC envelopes
   const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
 
-  // Wait until <body> exists (assets can load after DOMContentLoaded on Website)
-  function bodyReady(fn) {
-    if (document.body) return fn();
-    const mo = new MutationObserver(() => { if (document.body) { mo.disconnect(); fn(); } });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
-  }
-
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
   function getCookie(name) {
@@ -328,22 +321,6 @@ function mdLiteToHtml(md) {
   }
   endLists();
   return out.join('') || '<p>…</p>';
-}
-
-// -- Fallback: extract first JSON object from a text (handles ```json ...``` too)
-function extractJsonSafe(text) {
-  if (!text) return null;
-  const s = String(text).trim();
-  // strip code fences if present
-  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fenced ? fenced[1].trim() : s.trim();
-  try { return JSON.parse(body); } catch {}
-  // last resort: greedy brace slice
-  const start = body.indexOf('{'), end = body.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(body.slice(start, end + 1)); } catch {}
-  }
-  return null;
 }
 
 })();

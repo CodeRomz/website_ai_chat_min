@@ -33,31 +33,12 @@ DOCS_DEFAULT_MAX_PAGES = 40
 DOCS_DEFAULT_MAX_HITS = 12
 DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
 
-ROUTER_RETRIEVE_T = 0.75
 ROUTER_OFFER_T = 0.45
 
 
 
 _FENCE_OPEN = re.compile(r'^\s*```[a-zA-Z0-9_-]*\s*')
 _FENCE_CLOSE = re.compile(r'\s*```\s*$')
-
-ASSISTANT_JSON_CONTRACT = """
-Return ONLY a JSON object with:
-{
-  "title": string,           // ≤ 60 chars
-  "summary": string,         // ≤ 80 words
-  "answer_md": string,       // Markdown; ≤ 8 bullets OR ≤ 120 words
-  "citations": [             // optional; from provided excerpts
-    {"file": string, "page": integer}
-  ],
-  "suggestions": [string]    // optional; ≤ 3 follow-ups
-}
-Do NOT wrap the JSON in code fences.
-Do NOT include text before or after the JSON.
-If documents are insufficient and docs-only is enabled,
-set "summary" to "I don’t know based on the current documents."
-and keep "answer_md" short, asking the user to narrow by document number.
-"""
 
 # ---------------- Optional libs ----------------
 try:
@@ -217,24 +198,8 @@ def _router_decide(q: str, force: bool = False) -> tuple[str, float, str]:
     if force:
         return "retrieve", 1.0, "forced"
     s = _router_score(q)
-    rt = float(_get_icp_param("website_ai_chat_min.router_retrieve_t", ROUTER_RETRIEVE_T))
-    ot = float(_get_icp_param("website_ai_chat_min.router_offer_t", ROUTER_OFFER_T))
-    if s >= rt:
-        return "retrieve", s, f"score={s:.2f}"
-    if ot <= s < rt:
-        return "answer_with_offer", s, f"offer score={s:.2f}"
     return "answer", s, f"score={s:.2f}"
 
-# ---------------- Negative cache (no-hit suppression) ----------------
-def _neg_cache_key(q: str) -> str:
-    return "ai:noc:" + str(hash(" ".join((q or "").lower().split())))
-
-def _neg_cache_get(q: str) -> bool:
-    return bool(request.session.get(_neg_cache_key(q)))
-
-def _neg_cache_put(q: str) -> None:
-    request.session[_neg_cache_key(q)] = int(time.time())
-    request.session.modified = True
 
 # ---------------- PDF retrieval (chunked, budgeted) ----------------
 def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str]]:
@@ -252,7 +217,6 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
     max_files = _int_icp("website_ai_chat_min.docs_max_files", DOCS_DEFAULT_MAX_FILES)
     max_pages = _int_icp("website_ai_chat_min.docs_max_pages", DOCS_DEFAULT_MAX_PAGES)
     max_hits = _int_icp("website_ai_chat_min.docs_max_hits", DOCS_DEFAULT_MAX_HITS)
-    budget_ms = _int_icp("website_ai_chat_min.docs_budget_ms", DOCS_DEFAULT_BUDGET_MS)
 
     results: List[Tuple[str, int, str]] = []
     ql = (query or "").lower()
@@ -266,9 +230,6 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
         for fn in filenames:
             if not fn.lower().endswith(".pdf"):
                 continue
-            if int((time.time() - t0) * 1000) > budget_ms:
-                budget_exhausted = True
-                break
             path = os.path.join(dirpath, fn)
             files_scanned += 1
             if files_scanned > max_files:
@@ -278,9 +239,7 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
                     reader = pypdf.PdfReader(f)
                     page_count = min(len(reader.pages), max_pages)
                     for idx in range(page_count):
-                        if int((time.time() - t0) * 1000) > budget_ms:
-                            budget_exhausted = True
-                            break
+
                         page = reader.pages[idx]
                         text = (page.extract_text() or "").strip()
                         if not text:
@@ -303,7 +262,7 @@ def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str
 
     _logger.info(
         "[AIChat] Scan finished: files=%s hits=%s budget_ms=%s elapsed_ms=%d",
-        files_scanned, len(results), budget_ms, int((time.time() - t0) * 1000),
+        files_scanned, len(results), int((time.time() - t0) * 1000),
     )
     return results[:max_hits]
 
@@ -405,7 +364,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
         "Formatting: Keep it compact. No more than 10 bullets or 200 words in 'answer_md'. "
         "Always include a short 'summary'. If many topics appear, ask for the document number/code."
     )
-    lines.append("OUTPUT FORMAT:\n" + ASSISTANT_JSON_CONTRACT.strip())
+
     if snippets:
         lines.append("Relevant excerpts (cite using [File p.X]):")
         for fn, page, text in snippets:
@@ -427,10 +386,6 @@ def _get_ai_config():
     max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
     redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
 
-    retrieve_t = _float_icp("website_ai_chat_min.router_retrieve_t", ROUTER_RETRIEVE_T)
-    offer_t = _float_icp("website_ai_chat_min.router_offer_t", ROUTER_OFFER_T)
-
-    docs_budget_ms = _int_icp("website_ai_chat_min.docs_budget_ms", DOCS_DEFAULT_BUDGET_MS)
 
     return {
         "provider": provider,
@@ -444,9 +399,6 @@ def _get_ai_config():
         "temperature": temperature,
         "max_tokens": max_tokens,
         "redact_pii": redact_pii,
-        "retrieve_t": retrieve_t,
-        "offer_t": offer_t,
-        "docs_budget_ms": docs_budget_ms,
     }
 
 # ---------------- Markdown fence/JSON extraction helpers (NEW) ----------------
@@ -565,12 +517,6 @@ class WebsiteAIChatController(http.Controller):
         doc_snippets: List[Tuple[str, int, str]] = []
         t_scan0 = time.time()
 
-        docs_folder = cfg["docs_folder"]
-        if (request_only_docs or route_action == "retrieve") and docs_folder and os.path.isdir(docs_folder):
-            if not _neg_cache_get(q):
-                doc_snippets = _read_pdf_snippets(docs_folder, q)
-                if not doc_snippets:
-                    _neg_cache_put(q)
         scan_ms = int((time.time() - t_scan0) * 1000)
 
         # Docs-only immediate response if no snippets

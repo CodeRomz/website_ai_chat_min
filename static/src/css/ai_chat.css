@@ -187,8 +187,6 @@
 
 /* --- AI chat: presentable bot message --- */
 .ai-box { display: block; }
-.ai-chat-min__title { font-weight: 600; margin-bottom: 2px; color: var(--ai-text); }
-.ai-chat-min__summary { font-size: 12px; color: var(--ai-subtle); margin-bottom: 6px; }
 
 .ai-md ul, .ai-md ol { margin: 6px 0 0; padding-left: 1.1rem; }
 .ai-md li { margin: 2px 0; }
@@ -229,11 +227,4 @@
 @media (max-width: 480px) {
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
-}
-
-
-/* Minimal reply mode: hide meta fields */
-.ai-chat-min__panel.minimal .ai-chat-min__title,
-.ai-chat-min__panel.minimal .ai-chat-min__summary {
-  display: none;
 }

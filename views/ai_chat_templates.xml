@@ -14,11 +14,11 @@
             </t>
           </div>
           <!-- Not self-closing -->
-          <div id="ai-chat-i18n"
+          <!--<div id="ai-chat-i18n"
                data-title="AI Chat"
                data-send="Send"
                data-placeholder="Type your question…"
-               data-close="Close"></div>
+               data-close="Close"></div>-->
         </section>
       </t>
     </template>
