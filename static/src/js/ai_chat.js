@@ -10,7 +10,10 @@
     return v ? decodeURIComponent(v.split("=")[1]) : "";
   }
   function getCsrf() {
-    return getCookie("csrf_token") || getCookie("frontend_csrf_token") || "";
+    return getCookie("csrf_token") || "";
+  }
+  function getFrontendCsrf() {
+    return getCookie("frontend_csrf_token") || "";
   }
 
   async function fetchJSON(
@@ -30,6 +33,7 @@
             "Content-Type": "application/json",
             "X-CSRFToken": getCsrf(),
             "X-Openerp-CSRF-Token": getCsrf(),
+            ...(getFrontendCsrf() ? { "X-Frontend-CSRF-Token": getFrontendCsrf() } : {})
           }
         : {}),
       ...headers,
@@ -73,7 +77,7 @@
 
   async function probeCanLoad() {
     try {
-      const { ok, status, data } = await fetchJSON("/ai_chat/can_load", { method: "POST", body: { jsonrpc: "2.0", method: "call", params: {} } });
+      const { ok, status, data } = await fetchJSON("/ai_chat/can_load", { method: "POST", body: {} });
       if (!ok && (status === 404 || status === 405)) return { mount: true };
       if (!ok && (status === 401 || status === 403)) return { mount: false };
       if (!ok) return { mount: true };
@@ -230,8 +234,7 @@
       try {
         const { ok, status, data } = await fetchJSON("/ai_chat/send", {
           method: "POST",
-          body: { jsonrpc: "2.0", method: "call", params: { question: q } },
-          timeoutMs: 25000,
+          body: { question: q },
         });
 
         // If unauthorized, hide panel and bubble

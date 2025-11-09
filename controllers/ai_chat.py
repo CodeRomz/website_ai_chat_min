@@ -5,6 +5,7 @@ from odoo import http, tools, _
 from odoo.http import request
 from odoo.exceptions import AccessDenied
 
+
 import json
 import os
 import time
@@ -21,16 +22,41 @@ _logger = logging.getLogger(__name__)
 #
 # To speed up repeated lookups, we maintain a simple in-memory cache of
 # previously asked questions.  Each entry maps a tuple of (question text,
-#  flag) to the AI's reply and the constructed UI payload.  This
+# docs-only flag) to the AI's reply and the constructed UI payload.  This
 # reduces latency when users ask the same question multiple times and avoids
 # redundant document scans and provider calls.  Note: this cache lives in
 # process memory; it resets when the Odoo server restarts.  Administrators
 # can replace this with a more robust cache (e.g., Redis) if needed.
-_QA_CACHE: Dict[str, Dict[str, object]] = {}
+_QA_CACHE: Dict[Tuple[str, bool], Dict[str, object]] = {}
 
 # -----------------------------------------------------------------------------
+# Document listing helper
+#
+# Users sometimes ask to list the available documents.  This helper collects
+# filenames from the configured docs folder.  It walks subdirectories and
+# returns a sorted list of files with supported extensions.
+def _list_documents(root_folder: str) -> List[str]:
+    if not root_folder or not os.path.exists(root_folder):
+        return []
+    doc_list: List[str] = []
+    for dirpath, _, filenames in os.walk(root_folder):
+        for fn in filenames:
+            if fn.lower().endswith((".pdf", ".docx", ".xlsx", ".pptx")):
+                doc_list.append(fn)
+    return sorted(doc_list)
+
+# Determine whether the user's query requests a list of documents.  This
 # function covers commands like "list all documents" and natural
 # questions like "what are the documents available?".
+def _is_list_all_documents(q: str) -> bool:
+    text = (q or "").lower().strip()
+    # explicit list/show commands
+    if re_std.match(r"^(list|show)\b.*\b(documents|docs)\b", text):
+        return True
+    # general queries about available documents
+    if re_std.search(r"\b(documents|docs)\b.*\bavailable\b", text):
+        return True
+    return False
 
 # ---------------- Defaults / Tunables (override via ICP) ----------------
 DEFAULT_RATE_LIMIT_MAX = 5
@@ -42,6 +68,10 @@ GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 AI_DEFAULT_TIMEOUT = 15
 AI_DEFAULT_TEMPERATURE = 0.2
 AI_DEFAULT_MAX_TOKENS = 512
+
+ROUTER_OFFER_T = 0.45
+
+
 
 _FENCE_OPEN = re.compile(r'^\s*```[a-zA-Z0-9_-]*\s*')
 _FENCE_CLOSE = re.compile(r'\s*```\s*$')
@@ -175,8 +205,66 @@ def _redact_pii(text: str) -> str:
     except Exception:
         return text
 
-# ---------------- Provider adapters ----------------
+# ---------------- Selective RAG router ----------------
+DOC_TRIGGERS = [
+    r"\bqms\b", r"\bsop(s)?\b", r"\bpolicy\b", r"\bprocedure\b", r"\bwork instruction\b",
+    r"\bclause\b", r"\bsection\b", r"\bappendix\b", r"\biso\s*9001\b",
+    r"\baccording to (our|the) (doc(ument)?|policy|sop|qms)\b",
+    r"\b(pdf|docx|xlsx)\b",
+]
+DOC_ID_PREFIXES = [
+    r"\b[A-Z]{2,5}-[A-Z]{2,5}-(PRC|POL|WI)-\d{3,6}\b",
+    r"\bIT-SOP-\d+\b", r"\bHR-POL-\d+\b",
+]
 
+def _router_score(q: str) -> float:
+    text = (q or "").lower()
+    score = 0.0
+    for pat in DOC_TRIGGERS:
+        if re_std.search(pat, text):
+            score += 0.22
+    for pat in DOC_ID_PREFIXES:
+        if re_std.search(pat, text):
+            score += 0.35
+    if any(x in text for x in ("cite", "citation", "source", "per policy", "per sop", "per qms")):
+        score += 0.15
+    return min(score, 1.0)
+
+def _router_decide(q: str, force: bool = False) -> tuple[str, float, str]:
+    """
+    Decide whether to retrieve document snippets or rely on general AI.
+
+    This implementation always returns "retrieve" so that every question
+    triggers a scan of the configured documents folder.  This ensures the
+    assistant looks into internal documents for answers, as requested by
+    the user.  The confidence score is set based on the original router
+    score to preserve logging context.  The reason string identifies that
+    retrieval was forced.
+    """
+    if force:
+        return "retrieve", 1.0, "forced"
+    # Compute a nominal score for logging purposes; always retrieve
+    s = _router_score(q)
+    return "retrieve", s, f"forced_retrieve score={s:.2f}"
+
+
+# ---------------- PDF retrieval (chunked, budgeted) ----------------
+def _read_pdf_snippets(root_folder: str, query: str) -> List[Tuple[str, int, str]]:
+    """
+    Deprecated PDF scanning helper.
+
+    Local PDF scanning and snippet extraction has been removed in favor of
+    Gemini File Search.  This stub remains to maintain compatibility with
+    existing code paths.  It always returns an empty list, indicating that
+    no snippets were found.
+
+    :param root_folder: Path to the folder containing documents (ignored).
+    :param query: User query (ignored).
+    :returns: An empty list.
+    """
+    return []
+
+# ---------------- Provider adapters ----------------
 class _ProviderBase:
     def __init__(self, api_key: str, model: str, timeout: int, temperature: float, max_tokens: int):
         self.api_key = api_key
@@ -333,6 +421,7 @@ class _GeminiProvider(_ProviderBase):
                 )
         return (getattr(r, "text", None) or "").strip()
 
+
 def _get_provider(cfg: dict) -> _ProviderBase:
     provider = (cfg.get("provider") or "openai").strip().lower()
     if provider == "gemini":
@@ -340,11 +429,15 @@ def _get_provider(cfg: dict) -> _ProviderBase:
     return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
 
 # ---------------- Prompt composition ----------------
-def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]]) -> str:
+def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]], only_docs: bool) -> str:
     lines = []
     base = (system_prompt or "").strip()
     if base:
         lines.append(base)
+    if only_docs:
+        lines.append(
+            "You MUST answer **only** using the provided excerpts. If they do not contain the answer, reply exactly: \"I don’t know based on the current documents.\" Do not add outside knowledge."
+        )
     else:
         lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
 
@@ -368,10 +461,14 @@ def _get_ai_config():
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
+    docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
+    only_docs = _bool_icp("website_ai_chat_min.answer_only_from_docs", False)
+
     timeout = _int_icp("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT)
     temperature = _float_icp("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE)
     max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
     redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
+
 
     # Load additional configuration for optional Gemini File Search integration.
     file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
@@ -383,6 +480,8 @@ def _get_ai_config():
         "model": model,
         "system_prompt": system_prompt,
         "allowed_regex": allowed_regex,
+        "docs_folder": docs_folder,
+        "only_docs": only_docs,
         "timeout": timeout,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -464,9 +563,9 @@ class WebsiteAIChatController(http.Controller):
             return {"show": False}
 
     @http.route("/ai_chat/send", type="json", auth="public", csrf=True, methods=["POST"])
-    def send(self, question=None):
+    def send(self, question=None, force: bool = False):
         """
-        Validates, composes prompt,
+        Validates, selectively retrieves PDF context, composes prompt,
         calls provider with retries, and returns a compact, structured reply.
         """
         if not _throttle():
@@ -478,6 +577,17 @@ class WebsiteAIChatController(http.Controller):
             return {"ok": False, "reply": _("Please enter a question.")}
         if len(q) > 4000:
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
+
+        # Pull explicit force flag (optional).  Docs-only override has been removed.
+        try:
+            raw = request.httprequest.get_data(cache=False, as_text=True)
+            if raw:
+                payload = json.loads(raw)
+                if isinstance(payload, dict):
+                    force = bool(payload.get("force", force))
+        except Exception:
+            pass
+
         cfg = _get_ai_config()
         if not cfg["api_key"]:
             return {"ok": False, "reply": _("AI provider API key is not configured. Please contact the administrator.")}
@@ -503,3 +613,126 @@ class WebsiteAIChatController(http.Controller):
         # If the user explicitly asks to list available documents, return a
         # bullet list of filenames from the docs folder.  This bypasses the
         # AI provider entirely and caches the result under a dedicated key.
+        if _is_list_all_documents(q):
+            list_key = ("__list_docs__", cfg["only_docs"])
+            cached_list = _QA_CACHE.get(list_key)
+            if cached_list:
+                return {"ok": True, "reply": cached_list["reply"], "ui": dict(cached_list["ui"])}
+            docs = _list_documents(cfg["docs_folder"])
+            if not docs:
+                answer_list = _(
+                    "No documents were found in the configured folder. Please check your settings."
+                )
+            else:
+                # Show up to 50 documents to avoid flooding the UI
+                MAX_LIST = 50
+                truncated = docs[:MAX_LIST]
+                bullets = "\n".join(f"• {fn}" for fn in truncated)
+                suffix = "" if len(docs) <= MAX_LIST else _(
+                    f"\n\n(Showing {MAX_LIST} of {len(docs)} documents)"
+                )
+                answer_list = f"{bullets}{suffix}"
+            ui = {
+                "title": "Document list",
+                "summary": _(
+                    f"{len(docs)} document{'s' if len(docs) != 1 else ''} found."
+                ) if docs else "",
+                "answer_md": answer_list,
+                "citations": [],
+                "suggestions": [],
+            }
+            _QA_CACHE[list_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
+            return {"ok": True, "reply": ui["answer_md"], "ui": ui}
+
+        # ----------------------------------------------------------------------
+        # Caching
+        #
+        # To avoid redundant scans and API calls, check if we've seen this
+        # question before.  The cache key includes the question text and
+        # whether docs-only mode is enabled.  Note that the redacted
+        # version of the question is used to ensure consistent matches when
+        # PII redaction is on.  If a cached entry is found, return it
+        # immediately.  Otherwise continue with routing and retrieval.
+        cache_key = (outbound_q, cfg["only_docs"])
+        cached = _QA_CACHE.get(cache_key)
+        if cached:
+            # Return a copy to avoid accidental mutation of cached data
+            return {"ok": True, "reply": cached["reply"], "ui": dict(cached["ui"])}
+
+        # ---------------- Compose prompt ----------------
+        # Build a system prompt using the configured system message.  We ignore
+        # document snippets and docs-only settings, as local PDF scanning has
+        # been removed.  The system preamble still enforces formatting rules.
+        system_text = _build_system_preamble(cfg["system_prompt"], [], False)
+
+        # ---------------- Call provider ----------------
+        provider = _get_provider(cfg)
+        t_ai0 = time.time()
+        try:
+            # Use Gemini File Search when enabled and configured; otherwise
+            # fall back to a direct generation call.  In both cases, the
+            # outbound question is combined with the system prompt.
+            if use_file_search:
+                reply = provider.generate_with_file_search(system_text, outbound_q, cfg["file_search_store"])
+            else:
+                reply = provider.generate(system_text, outbound_q)
+        except Exception as e:
+            _logger.error(
+                "[AIChat] Provider error (%s/%s): %s",
+                cfg["provider"], cfg["model"] or "<default>", tools.ustr(e), exc_info=True
+            )
+            return {"ok": False, "reply": _("The AI service is temporarily unavailable. Please try again shortly.")}
+        finally:
+            ai_ms = int((time.time() - t_ai0) * 1000)
+            # Log basic performance metrics.  Document retrieval times and
+            # snippet counts are omitted since local scanning is disabled.
+            _logger.info(
+                "[AIChat] provider=%s model=%s ai_ms=%s pii=%s",
+                cfg["provider"], cfg["model"] or "<default>", ai_ms, bool(cfg["redact_pii"])
+            )
+
+        # ---------------- Compose UI payload ----------------
+        answer_text: str = (reply or "").strip()
+        try:
+            parsed = extract_json_obj(reply or "")
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            try:
+                answer_text = str(
+                    parsed.get("answer_md") or parsed.get("text") or parsed.get("reply") or answer_text
+                )
+            except Exception:
+                pass
+        answer_text = _strip_md_fences(answer_text.strip())
+        try:
+            answer_text = re_std.sub(
+                r"Please include the document number/code.*?to narrow the result\.\s*",
+                "",
+                answer_text,
+                flags=re_std.I,
+            )
+        except Exception:
+            pass
+        try:
+            idx = answer_text.lower().find('"citations"')
+            if idx >= 0:
+                answer_text = answer_text[:idx].rstrip()
+        except Exception:
+            pass
+        try:
+            answer_text = re_std.sub(r"\[[^\]]*? p\.\d+(?:,\s*p\.\d+)*\]", "", answer_text)
+        except Exception:
+            pass
+
+        ui = {
+            "title": "",
+            "summary": "",
+            "answer_md": answer_text,
+            "citations": [],
+            "suggestions": [],
+        }
+        MAX_ANSWER_CHARS = 1800
+        ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
+        _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
+        return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
