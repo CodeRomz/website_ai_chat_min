@@ -5,6 +5,7 @@ from odoo import http, tools, _
 from odoo.http import request
 from odoo.exceptions import AccessDenied
 
+
 import json
 import os
 import time
@@ -34,6 +35,8 @@ DOCS_DEFAULT_BUDGET_MS = 500  # time budget for scanning
 
 ROUTER_RETRIEVE_T = 0.75
 ROUTER_OFFER_T = 0.45
+
+
 
 _FENCE_OPEN = re.compile(r'^\s*```[a-zA-Z0-9_-]*\s*')
 _FENCE_CLOSE = re.compile(r'\s*```\s*$')
@@ -386,6 +389,7 @@ class _GeminiProvider(_ProviderBase):
 
         return (getattr(r, "text", None) or "").strip()
 
+
 def _get_provider(cfg: dict) -> _ProviderBase:
     provider = (cfg.get("provider") or "openai").strip().lower()
     if provider == "gemini":
@@ -394,50 +398,30 @@ def _get_provider(cfg: dict) -> _ProviderBase:
 
 # ---------------- Prompt composition ----------------
 def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]], only_docs: bool) -> str:
-    """
-    Compose the system preamble for the LLM including optional document snippets.
-    """
-    parts = []
-    if system_prompt:
-        parts.append(system_prompt.strip())
-    if snippets:
-        # Concatenate snippets with citations
-        for idx, (fname, page, text) in enumerate(snippets, start=1):
-            parts.append(f"[{idx}] From {fname} page {page}: {text}")
+    lines = []
+    base = (system_prompt or "").strip()
+    if base:
+        lines.append(base)
     if only_docs:
-        parts.append("ANSWER ONLY WITH INFORMATION FROM THE PROVIDED DOCUMENT SNIPPETS.")
-    return "\n\n".join(parts).strip()
+        lines.append(
+            # "You MUST answer only using the provided excerpts. "
+            # "If they don't contain the answer, say exactly: “I don’t know based on the current documents.”"
+            "You MUST answer **only** using the provided excerpts. If they do not contain the answer, reply exactly: \"I don’t know based on the current documents.\" Do not add outside knowledge."
+        )
+    else:
+        lines.append("Prefer the provided excerpts; be concise if you rely on general knowledge.")
+    lines.append(
+        "Formatting: Keep it compact. No more than 10 bullets or 200 words in 'answer_md'. "
+        "Always include a short 'summary'. If many topics appear, ask for the document number/code."
+    )
+    lines.append("OUTPUT FORMAT:\n" + ASSISTANT_JSON_CONTRACT.strip())
+    if snippets:
+        lines.append("Relevant excerpts (cite using [File p.X]):")
+        for fn, page, text in snippets:
+            lines.append(f"[{fn} p.{page}] {text}")
+    return "\n".join(lines)
 
-def extract_json_obj(s: str):
-    """
-    Return a dict parsed from the first balanced JSON object inside s; else None.
-    """
-    if not s:
-        return None
-    try:
-        return json.loads(s)
-    except Exception:
-        # attempt to find JSON object inside fences or free-form text
-        s = str(s).strip()
-        m = re_std.search(r"\{.*\}", s, flags=re_std.S)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except Exception:
-                pass
-    return None
-
-def _strip_md_fences(s: str) -> str:
-    """Remove ```...``` fences (with optional language tag) from a single block."""
-    try:
-        if not s:
-            return s
-        t = s.strip()
-        m = re_std.match(r"^```[a-zA-Z0-9_-]*\s*\n(.*)\n```$", t, re_std.S)
-        return (m.group(1).strip() if m else t)
-    except Exception:
-        return s
-
+# ---------------- Config loader ----------------
 def _get_ai_config():
     provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
@@ -445,7 +429,7 @@ def _get_ai_config():
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
-    only_docs_cfg = _bool_icp("website_ai_chat_min.answer_only_from_docs", False)
+    only_docs = _bool_icp("website_ai_chat_min.answer_only_from_docs", False)
 
     timeout = _int_icp("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT)
     temperature = _float_icp("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE)
@@ -464,7 +448,7 @@ def _get_ai_config():
         "system_prompt": system_prompt,
         "allowed_regex": allowed_regex,
         "docs_folder": docs_folder,
-        "only_docs": only_docs_cfg,
+        "only_docs": only_docs,
         "timeout": timeout,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -473,6 +457,64 @@ def _get_ai_config():
         "offer_t": offer_t,
         "docs_budget_ms": docs_budget_ms,
     }
+
+# ---------------- Markdown fence/JSON extraction helpers (NEW) ----------------
+def _strip_md_fences(s: str) -> str:
+    """Remove ```...``` fences (with optional language tag) from a single block."""
+    try:
+        if not s:
+            return s
+        t = s.strip()
+        m = re_std.match(r"^```[a-zA-Z0-9_-]*\s*\n(.*)\n```$", t, re_std.S)
+        return (m.group(1).strip() if m else t)
+    except Exception:
+        return s
+
+def extract_json_obj(s: str):
+    """Return a dict parsed from the first balanced JSON object inside s; else None."""
+    if not s:
+        return None
+    s = s.strip()
+
+    # strip leading/trailing code fences if present
+    if s.startswith("```"):
+        s = _FENCE_OPEN.sub("", s, count=1)
+        s = _FENCE_CLOSE.sub("", s, count=1).strip()
+
+    # fast path: exact JSON
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+
+    # scan for first balanced {...}
+    start = s.find("{")
+    if start == -1:
+        return None
+
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(s[start:i+1])
+                    except Exception:
+                        break
+    return None
 
 # ---------------- HTTP Controller ----------------
 class WebsiteAIChatController(http.Controller):
@@ -507,13 +549,14 @@ class WebsiteAIChatController(http.Controller):
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
         # Pull explicit force flag (optional) and docsOnly override
-        raw = request.httprequest.get_data(cache=False, as_text=True)
         docs_only_override = None
         try:
+            raw = request.httprequest.get_data(cache=False, as_text=True)
             if raw:
                 payload = json.loads(raw)
                 if isinstance(payload, dict):
                     force = bool(payload.get("force", force))
+                    # allow per-request override of docs-only toggle (boolean)
                     if "docsOnly" in payload:
                         docs_only_override = bool(payload["docsOnly"])
         except Exception:
@@ -528,15 +571,15 @@ class WebsiteAIChatController(http.Controller):
 
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
+        # Determine whether this particular request should operate in docs-only mode
+        request_only_docs = docs_only_override if docs_only_override is not None else cfg["only_docs"]
+
         # ---------------- Routing & Retrieval ----------------
         route_action, confidence, route_reason = _router_decide(q, force=force)
         doc_snippets: List[Tuple[str, int, str]] = []
         t_scan0 = time.time()
 
         docs_folder = cfg["docs_folder"]
-        # determine whether to operate in docsOnly mode for this request
-        request_only_docs = docs_only_override if docs_only_override is not None else cfg["only_docs"]
-
         if (request_only_docs or route_action == "retrieve") and docs_folder and os.path.isdir(docs_folder):
             if not _neg_cache_get(q):
                 doc_snippets = _read_pdf_snippets(docs_folder, q)
@@ -576,38 +619,31 @@ class WebsiteAIChatController(http.Controller):
                 scan_ms, ai_ms, len(doc_snippets), bool(cfg["redact_pii"])
             )
 
-        # ---------------- Parse UI payload (robust, CLEAN) ----------------
+        # ---------------- Compose a simple UI payload ----------------
+        # We intentionally avoid parsing JSON returned by the model.  Whatever
+        # the provider sends back is treated as plain text.  Fenced
+        # markdown/code blocks are stripped for safety.  Citations are
+        # attached only when the user explicitly requested docs-only and
+        # snippets were found.  This ensures no raw JSON leaks through the
+        # reply channel while still allowing citations to be displayed.
         ui = {
             "title": "",
             "summary": "",
-            "answer_md": (reply or "").strip(),
+            "answer_md": _strip_md_fences((reply or "").strip()),
             "citations": [],
             "suggestions": [],
         }
 
-        parsed = extract_json_obj(reply or "")
-        if isinstance(parsed, dict) and parsed.get("answer_md"):
-            ui.update({
-                "title": (parsed.get("title") or "")[:60],
-                "summary": parsed.get("summary") or "",
-                "answer_md": (parsed.get("answer_md") or "").strip(),
-                "citations": list(parsed.get("citations") or [])[:8],
-                "suggestions": list(parsed.get("suggestions") or [])[:3],
-            })
-        else:
-            # ensure we never send fenced content to the UI
-            ui["answer_md"] = _strip_md_fences(ui["answer_md"])
-
-        if not ui["citations"] and doc_snippets:
+        # Attach citations only when docs-only is active and snippets exist
+        if request_only_docs and doc_snippets:
             ui["citations"] = [{"file": f, "page": p} for (f, p, _) in doc_snippets[:5]]
 
-        # Heuristic suggestion when context weak/broad
+        # Suggest including a document code when the retrieval context is weak or broad
         if len(doc_snippets) == 0 or len(doc_snippets) > 8:
             hint = _("Please include the document number/code (e.g., FN-PMO-PR-0040) to narrow the result.")
-            if hint not in ui["suggestions"]:
-                ui["suggestions"].append(hint)
+            ui["suggestions"].append(hint)
 
-        # Return compact payload your JS expects
+        # Truncate excessively long answers
         MAX_ANSWER_CHARS = 1800
         ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}

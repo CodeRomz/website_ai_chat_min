@@ -21,41 +21,41 @@
   }
 
   async function fetchJSON(
-    url,
-    { method = "GET", body = undefined, headers = {}, timeoutMs = 12000 } = {}
-  ) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const opts = {
-      method,
-      credentials: "same-origin",
-      signal: ctrl.signal,
-      headers: {
-        "Accept": "application/json",
-        ...(method !== "GET"
-          ? {
-              "Content-Type": "application/json",
-              "X-CSRFToken": getCsrf(),
-              "X-Openerp-CSRF-Token": getCsrf(),
-            }
-          : {}),
-        ...headers,
-      },
-    };
-    if (body !== undefined) {
-      opts.body = typeof body === "string" ? body : JSON.stringify(body);
-    }
-    let res;
-    try {
-      res = await fetch(url, opts);
-    } finally {
-      clearTimeout(t);
-    }
-    const isJSON = (res.headers.get("content-type") || "").includes("application/json");
-    let data = null;
-    try { data = isJSON ? await res.json() : null; } catch (_) {}
-    return { ok: res.ok, status: res.status, data };
+  url,
+  { method = "GET", body = undefined, headers = {}, timeoutMs = 12000 } = {}
+) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const opts = {
+    method,
+    credentials: "same-origin",
+    signal: ctrl.signal,
+    headers: {
+      "Accept": "application/json",
+      ...(method !== "GET"
+        ? {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrf(),
+            "X-Openerp-CSRF-Token": getCsrf(),
+          }
+        : {}),
+      ...headers,
+    },
+  };
+  if (body !== undefined) {
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
   }
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } finally {
+    clearTimeout(t);
+  }
+  const isJSON = (res.headers.get("content-type") || "").includes("application/json");
+  let data = null;
+  try { data = isJSON ? await res.json() : null; } catch (_) {}
+  return { ok: res.ok, status: res.status, data };
+}
 
   // ---- LOGIN CHECK (POST JSON-RPC) ----
   async function isUserLoggedIn() {
@@ -94,6 +94,7 @@
     const wrap = document.createElement("div");
     wrap.className = "ai-chat-min__wrap";
 
+    // Floating bubble that toggles the panel
     const bubble = document.createElement("button");
     bubble.className = "ai-chat-min__bubble";
     bubble.type = "button";
@@ -102,19 +103,24 @@
     const icon = new Image();
     icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png";
     icon.alt = "";
-    icon.width = 45; icon.height = 45;
+    icon.width = 45;
+    icon.height = 45;
     icon.decoding = "async";
     icon.style.display = "block";
     icon.style.pointerEvents = "none";
-    icon.addEventListener("error", () => { bubble.textContent = "💬"; });
+    icon.addEventListener("error", () => {
+      bubble.textContent = "💬";
+    });
     bubble.appendChild(icon);
 
+    // Main chat panel (dialog)
     const panel = document.createElement("div");
-    panel.className = "ai-chat-min__panel minimal";   // <- minimal mode ON
+    panel.className = "ai-chat-min__panel minimal"; // minimal mode: hide titles/summaries by default
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
     panel.hidden = true;
 
+    // Header with title and close button
     const header = document.createElement("div");
     header.className = "ai-chat-min__header";
     const title = document.createElement("span");
@@ -123,23 +129,10 @@
     closeBtn.className = "ai-chat-min__close";
     closeBtn.type = "button";
     closeBtn.textContent = "×";
-    header.appendChild(title); header.appendChild(closeBtn);
+    header.appendChild(title);
+    header.appendChild(closeBtn);
 
-    const body = document.createElement("div");
-    body.className = "ai-chat-min__body";
-
-    const footer = document.createElement("div");
-    footer.className = "ai-chat-min__footer";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Type your question…";
-    const send = document.createElement("button");
-    send.className = "ai-chat-min__send";
-    send.type = "button";
-    send.textContent = "Send";
-    footer.appendChild(input); footer.appendChild(send);
-
-    // docs-only toggle container
+    // Toggle pills for AI Assist vs Docs Only
     const toggleWrap = document.createElement("div");
     toggleWrap.className = "ai-toggle-wrap";
     const aiAssistPill = document.createElement("span");
@@ -151,12 +144,30 @@
     toggleWrap.appendChild(aiAssistPill);
     toggleWrap.appendChild(docsOnlyPill);
 
-    // docs-only banner
+    // Banner shown when Docs Only mode is active
     const docsBanner = document.createElement("div");
     docsBanner.className = "docs-only-banner";
     docsBanner.textContent = "Answering from documents only.";
     docsBanner.hidden = true;
 
+    // Body (message list)
+    const body = document.createElement("div");
+    body.className = "ai-chat-min__body";
+
+    // Footer with input and send button
+    const footer = document.createElement("div");
+    footer.className = "ai-chat-min__footer";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Type your question…";
+    const send = document.createElement("button");
+    send.className = "ai-chat-min__send";
+    send.type = "button";
+    send.textContent = "Send";
+    footer.appendChild(input);
+    footer.appendChild(send);
+
+    // Assemble the panel
     panel.appendChild(header);
     panel.appendChild(toggleWrap);
     panel.appendChild(docsBanner);
@@ -166,100 +177,9 @@
     wrap.appendChild(panel);
     (mount || document.body).appendChild(wrap);
 
-    function toggle(open) {
-      panel.hidden = (open === undefined) ? !panel.hidden : !open;
-      (panel.hidden ? bubble : input).focus();
-    }
-    bubble.addEventListener("click", () => toggle(true));
-    closeBtn.addEventListener("click", () => toggle(false));
-    window.addEventListener("keydown", (e) => { if (!panel.hidden && e.key === "Escape") toggle(false); });
-
-    function appendMessage(cls, text) {
-      const row = document.createElement("div");
-      row.className = `ai-chat-min__msg ${cls}`;
-      row.textContent = String(text || "");
-      body.appendChild(row);
-      body.scrollTop = body.scrollHeight;
-    }
-
-    function appendBox(el) {
-      const row = document.createElement("div");
-      row.className = "ai-chat-min__msg bot";
-      row.appendChild(el);
-      body.appendChild(row);
-      body.scrollTop = body.scrollHeight;
-    }
-
-    // ---- MINIMALIST ANSWER RENDERING ----
-    function cleanAnswerMd(s) {
-      let t = String(s || '');
-      // Strip trivial filler the model sometimes adds
-      t = t.replace(/^\s*acknowledged the greeting\.?\s*/i, '');
-      t = t.replace(/^\s*acknowledged\.?\s*/i, '');
-      t = t.replace(/^\s*(hi|hello|hey)[\s,!.-]*/i, '');
-      return t.trim();
-    }
-    function appendBotUI(ui) {
-      const row = document.createElement('div');
-      row.className = 'ai-chat-min__msg bot';
-
-      const box = document.createElement('div');
-      box.className = 'ai-box';
-
-      if (ui?.title) {
-        const t = document.createElement('div');
-        t.className = 'ai-chat-min__title';
-        t.textContent = String(ui.title).trim().slice(0, 80);
-        box.appendChild(t);
-      }
-
-      if (ui?.summary) {
-        const s = document.createElement('div');
-        s.className = 'ai-chat-min__summary';
-        s.textContent = String(ui.summary).trim();
-        box.appendChild(s);
-      }
-
-      const a = document.createElement('div');
-      a.className = 'ai-md';
-      a.innerHTML = mdLiteToHtml(cleanAnswerMd(ui?.answer_md || ''));
-      box.appendChild(a);
-
-      if (Array.isArray(ui?.citations) && ui.citations.length) {
-        const cwrap = document.createElement('div');
-        cwrap.className = 'ai-citations';
-        ui.citations.slice(0, 5).forEach(ci => {
-          const chip = document.createElement('span');
-          chip.className = 'ai-chip';
-          chip.textContent = `${ci.file} p.${ci.page}`;
-          cwrap.appendChild(chip);
-        });
-        box.appendChild(cwrap);
-      }
-
-      if (Array.isArray(ui?.suggestions) && ui.suggestions.length) {
-        const swrap = document.createElement('div');
-        swrap.className = 'ai-suggestions';
-        ui.suggestions.forEach(sug => {
-          const chip = document.createElement('span');
-          chip.className = 'ai-suggest';
-          chip.textContent = String(sug);
-          chip.addEventListener("click", () => {
-            input.value = String(sug);
-            sendMsg();
-          });
-          swrap.appendChild(chip);
-        });
-        box.appendChild(swrap);
-      }
-
-      row.appendChild(box);
-      body.appendChild(row);
-      body.scrollTop = body.scrollHeight;
-    }
-
-    // track docsOnly state
+    // State: whether docs only mode is active
     let docsOnly = false;
+
     function updateToggle() {
       if (docsOnly) {
         aiAssistPill.classList.remove("active");
@@ -280,10 +200,104 @@
       updateToggle();
     });
 
+    // Function to toggle open/close of panel
+    function toggle(open) {
+      panel.hidden = open === undefined ? !panel.hidden : !open;
+      // Focus on bubble when closed; on input when open
+      (panel.hidden ? bubble : input).focus();
+    }
+    bubble.addEventListener("click", () => toggle(true));
+    closeBtn.addEventListener("click", () => toggle(false));
+    window.addEventListener("keydown", (e) => {
+      if (!panel.hidden && e.key === "Escape") toggle(false);
+    });
+
+    // Append a simple text message (user or fallback error)
+    function appendMessage(cls, text) {
+      const row = document.createElement("div");
+      row.className = `ai-chat-min__msg ${cls}`;
+      row.textContent = String(text || "");
+      body.appendChild(row);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    // Clean trivial filler from model answers
+    function cleanAnswerMd(s) {
+      let t = String(s || "");
+      // Remove some leading filler phrases
+      t = t.replace(/^\s*acknowledged the greeting\.?\s*/i, "");
+      t = t.replace(/^\s*acknowledged\.?\s*/i, "");
+      t = t.replace(/^\s*(hi|hello|hey)[\s,!.-]*/i, "");
+      return t.trim();
+    }
+
+    // Append a bot message with optional citations and suggestions
+    function appendBotUI(ui) {
+      const row = document.createElement("div");
+      row.className = "ai-chat-min__msg bot";
+
+      const box = document.createElement("div");
+      box.className = "ai-box";
+
+      if (ui && ui.title) {
+        const t = document.createElement("div");
+        t.className = "ai-chat-min__title";
+        t.textContent = String(ui.title).trim().slice(0, 80);
+        box.appendChild(t);
+      }
+
+      if (ui && ui.summary) {
+        const s = document.createElement("div");
+        s.className = "ai-chat-min__summary";
+        s.textContent = String(ui.summary).trim();
+        box.appendChild(s);
+      }
+
+      const a = document.createElement("div");
+      a.className = "ai-md";
+      a.innerHTML = mdLiteToHtml(cleanAnswerMd(ui?.answer_md || ""));
+      box.appendChild(a);
+
+      // Show citations only in docs-only mode or if provided directly from the backend
+      if (Array.isArray(ui?.citations) && ui.citations.length) {
+        const cwrap = document.createElement("div");
+        cwrap.className = "ai-citations";
+        ui.citations.slice(0, 5).forEach(ci => {
+          const chip = document.createElement("span");
+          chip.className = "ai-chip";
+          chip.textContent = `${ci.file} p.${ci.page}`;
+          cwrap.appendChild(chip);
+        });
+        box.appendChild(cwrap);
+      }
+
+      // Show suggestions if present
+      if (Array.isArray(ui?.suggestions) && ui.suggestions.length) {
+        const swrap = document.createElement("div");
+        swrap.className = "ai-suggestions";
+        ui.suggestions.forEach(sug => {
+          const chip = document.createElement("span");
+          chip.className = "ai-suggest";
+          chip.textContent = String(sug);
+          chip.addEventListener("click", () => {
+            input.value = String(sug);
+            sendMsg();
+          });
+          swrap.appendChild(chip);
+        });
+        box.appendChild(swrap);
+      }
+
+      row.appendChild(box);
+      body.appendChild(row);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    // Send message to backend and handle response
     async function sendMsg() {
       const q = input.value.trim();
       if (!q) return;
-
+      // Show the user's message immediately
       appendMessage("user", q);
       input.value = "";
       send.disabled = true;
@@ -294,6 +308,7 @@
           body: { question: q, docsOnly },
         });
 
+        // If unauthorized, hide panel and bubble
         if (!ok && (status === 401 || status === 403)) {
           panel.hidden = true;
           bubble.style.display = "none";
@@ -302,24 +317,17 @@
 
         const raw = unwrap(data || {});
         if (ok && raw && raw.ok) {
-          // Prefer structured UI, but gracefully fix raw fenced JSON replies
-          if (raw.ui && typeof raw.ui === 'object') {
-            appendBotUI(raw.ui);
-          } else {
-            const parsed = extractJsonSafe(raw.reply);
-            if (parsed && (parsed.answer_md || parsed.summary || parsed.title)) {
-              const ui = {
-                title: String(parsed.title || '').slice(0, 80),
-                summary: String(parsed.summary || ''),
-                answer_md: String(parsed.answer_md || parsed.text || raw.reply || ''),
-                citations: Array.isArray(parsed.citations) ? parsed.citations : [],
-                suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3) : [],
-              };
-              appendBotUI(ui);
-            } else {
-              appendMessage("bot", (raw.reply || "").replace(/```[\s\S]*?```/g, '').trim() || "…");
-            }
-          }
+          // Build UI object from server response; prefer structured UI
+          const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
+          const answerText = uiObj.answer_md || raw.reply || "";
+          const ui = {
+            title: uiObj.title || "",
+            summary: uiObj.summary || "",
+            answer_md: String(answerText).trim(),
+            citations: Array.isArray(uiObj.citations) ? uiObj.citations : [],
+            suggestions: Array.isArray(uiObj.suggestions) ? uiObj.suggestions.slice(0, 3) : [],
+          };
+          appendBotUI(ui);
         } else {
           appendMessage("bot", (raw && raw.reply) || "Network error.");
         }
@@ -331,9 +339,13 @@
       }
     }
 
+    // Bind send on button click and Enter key
     send.addEventListener("click", sendMsg);
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMsg();
+      }
     });
   }
 
@@ -359,46 +371,47 @@
     boot();
   }
 
-  // -- Tiny safe Markdown subset (bold **..**, italic *..*, `code`, -,*,1. lists) -> sanitized HTML
-  function mdLiteToHtml(md) {
-    const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-    const inline = t => (
-      t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-       .replace(/`([^`]+)`/g, '<code>$1</code>')
-       .replace(/(^|[^\\])\*([^*\n]+)\*/g, (m, p1, p2) => `${p1}<em>${p2}</em>`)
-    );
-    let s = esc(String(md || '')).replace(/\r\n?/g, '\n').trim();
-    const lines = s.split('\n');
-    const out = [];
-    let inUl=false, inOl=false;
-    const endLists=()=>{ if(inUl){out.push('</ul>'); inUl=false;} if(inOl){out.push('</ol>'); inOl=false;} };
-    for (const raw of lines) {
-      const l = raw.trim();
-      const mUl = l.match(/^[*-]\s+(.*)$/);
-      const mOl = l.match(/^\d+\.\s+(.*)$/);
-      if (mUl) { if (inOl){out.push('</ol>'); inOl=false;} if(!inUl){out.push('<ul>'); inUl=true;} out.push('<li>'+inline(mUl[1])+'</li>'); continue; }
-      if (mOl) { if (inUl){out.push('</ul>'); inUl=false;} if(!inOl){out.push('<ol>'); inOl=true;} out.push('<li>'+inline(mOl[1])+'</li>'); continue; }
-      if (!l) { endLists(); continue; }
-      endLists(); out.push('<p>'+inline(l)+'</p>');
-    }
-    endLists();
-    return out.join('') || '<p>…</p>';
-  }
 
-  // -- Fallback: extract first JSON object from a text (handles ```json ...``` too)
-  function extractJsonSafe(text) {
-    if (!text) return null;
-    const s = String(text).trim();
-    // strip code fences if present
-    const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const body = fenced ? fenced[1].trim() : s.trim();
-    try { return JSON.parse(body); } catch {}
-    // last resort: greedy brace slice
-    const start = body.indexOf('{'), end = body.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      try { return JSON.parse(body.slice(start, end + 1)); } catch {}
-    }
-    return null;
+  // -- Tiny safe Markdown subset (bold **..**, italic *..*, `code`, -,*,1. lists) -> sanitized HTML
+function mdLiteToHtml(md) {
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const inline = t => (
+    t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+     .replace(/`([^`]+)`/g, '<code>$1</code>')
+     .replace(/(^|[^\\])\*([^*\n]+)\*/g, (m, p1, p2) => `${p1}<em>${p2}</em>`)
+  );
+  let s = esc(String(md || '')).replace(/\r\n?/g, '\n').trim();
+  const lines = s.split('\n');
+  const out = [];
+  let inUl=false, inOl=false;
+  const endLists=()=>{ if(inUl){out.push('</ul>'); inUl=false;} if(inOl){out.push('</ol>'); inOl=false;} };
+  for (const raw of lines) {
+    const l = raw.trim();
+    const mUl = l.match(/^[*-]\s+(.*)$/);
+    const mOl = l.match(/^\d+\.\s+(.*)$/);
+    if (mUl) { if (inOl){out.push('</ol>'); inOl=false;} if(!inUl){out.push('<ul>'); inUl=true;} out.push('<li>'+inline(mUl[1])+'</li>'); continue; }
+    if (mOl) { if (inUl){out.push('</ul>'); inUl=false;} if(!inOl){out.push('<ol>'); inOl=true;} out.push('<li>'+inline(mOl[1])+'</li>'); continue; }
+    if (!l) { endLists(); continue; }
+    endLists(); out.push('<p>'+inline(l)+'</p>');
   }
+  endLists();
+  return out.join('') || '<p>…</p>';
+}
+
+// -- Fallback: extract first JSON object from a text (handles ```json ...``` too)
+function extractJsonSafe(text) {
+  if (!text) return null;
+  const s = String(text).trim();
+  // strip code fences if present
+  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : s.trim();
+  try { return JSON.parse(body); } catch {}
+  // last resort: greedy brace slice
+  const start = body.indexOf('{'), end = body.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(body.slice(start, end + 1)); } catch {}
+  }
+  return null;
+}
 
 })();
