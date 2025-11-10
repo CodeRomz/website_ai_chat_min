@@ -263,7 +263,7 @@ AI_DEFAULT_MAX_TOKENS = 512
 
 
 def _get_ai_config() -> Dict[str, Any]:
-    provider = _get_icp_param("website_ai_chat_min.ai_provider", "openai")
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini-2.0-flash")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
