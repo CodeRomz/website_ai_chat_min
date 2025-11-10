@@ -235,7 +235,7 @@ class _GeminiProvider(_ProviderBase):
                 # client_args={'proxy': 'http://user:pass@proxy.host:port'},
 
                 # If env proxies are misconfigured and you want to IGNORE them:
-                # httpx_client=httpx.Client(trust_env=False),
+                httpx_client=httpx.Client(trust_env=False),
 
                 # If your org uses a custom CA bundle (MITM proxy), point to it:
                 # client_args={'verify': '/etc/ssl/certs/corporate-root-ca.pem'},
