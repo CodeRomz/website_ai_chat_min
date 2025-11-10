@@ -277,11 +277,6 @@ class ResConfigSettings(models.TransientModel):
         op = client.file_search_stores.import_file(
             file_search_store_name=store_name,
             file_name=uploaded.name,  # e.g. "files/abc123"
-            custom_metadata=[
-                {"key": "source", "string_value": os.path.basename(real_path)},
-                # Keep/restore this if you share a store across tenants:
-                # {"key": "tenant", "string_value": self.env.cr.dbname},
-            ],
             chunking_config={
                 "white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}
             },
