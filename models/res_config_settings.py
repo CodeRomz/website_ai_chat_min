@@ -256,12 +256,18 @@ class ResConfigSettings(models.TransientModel):
         client = genai.Client(api_key=api_key)
 
         # Resolve or create store
-        store_name = (self.file_search_store or ICP.get_param("website_ai_chat_min.file_search_store") or "").strip()
-        if not store_name:
-            store = client.file_search_stores.create(config={"display_name": "odoo-kb"})
-            store_name = store.name
-            ICP.set_param("website_ai_chat_min.file_search_store", store_name)
-            self.file_search_store = store_name  # reflect immediately
+        # store_name = (self.file_search_store or ICP.get_param("website_ai_chat_min.file_search_store") or "").strip()
+        # if not store_name:
+        #     store = client.file_search_stores.create(config={"display_name": "odoo-kb"})
+        #     store_name = store.name
+        #     ICP.set_param("website_ai_chat_min.file_search_store", store_name)
+        #     self.file_search_store = store_name  # reflect immediately
+
+        store = client.file_search_stores.create(
+            config={"display_name": self.file_search_store}  # any human-friendly label
+        )
+
+        self.file_store_id = store.name
 
         # Determine MIME for logging & explicit Files API config
         mime_type = _guess_mime(real_path)
@@ -269,7 +275,7 @@ class ResConfigSettings(models.TransientModel):
             "Gemini File Search: uploading %s (mime=%s) to store %s",
             real_path,
             mime_type,
-            store_name,
+            self.file_store_id,
         )
 
         # ---------------------------
@@ -286,7 +292,7 @@ class ResConfigSettings(models.TransientModel):
         )
 
         op = client.file_search_stores.import_file(
-            file_search_store_name=store_name,
+            file_search_store_name=self.file_store_id,
             file_name=uploaded.name,  # e.g. "files/abc123"
         )
 
