@@ -221,12 +221,13 @@ class ResConfigSettings(models.TransientModel):
             ICP.set_param("website_ai_chat_min.file_search_store", store_name)
             self.file_search_store = store_name  # reflect immediately
 
-        # Determine MIME type
+        # Determine MIME type (validated for logging & guardrails; SDK infers during upload)
         mime_type = _guess_mime(real_path)
 
         _logger.info("Gemini File Search: uploading %s (mime=%s) to store %s", real_path, mime_type, store_name)
 
-        # Upload + index with chunking + metadata to boost retrieval and citations
+        # Upload + index with chunking + metadata
+        # NOTE: Do NOT pass mime_type here; the SDK does not accept it on this method.
         op = client.file_search_stores.upload_to_file_search_store(
             file=real_path,
             file_search_store_name=store_name,
@@ -239,7 +240,6 @@ class ResConfigSettings(models.TransientModel):
                     {"key": "source", "string_value": os.path.basename(real_path)},
                 ],
             },
-            mime_type=mime_type,
         )
 
         # Poll the LRO (max ~5 minutes)
