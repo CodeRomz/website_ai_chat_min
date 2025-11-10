@@ -202,48 +202,46 @@ class _OpenAIProvider(_ProviderBase):
 class _GeminiProvider(_ProviderBase):
     def __init__(self, *a, file_search_store: str = "", **kw):
         super().__init__(*a, **kw)
-        self.file_search_store = file_search_store
+        self.file_search_store = (file_search_store or "").strip()
 
     def ask(self, system_text: str, user_text: str) -> str:
         try:
+            # NEW GA SDK
             from google import genai
+            from google.genai import types
         except Exception:
             return "The Gemini client library is not installed on the server."
-        genai.configure(api_key=self.api_key)
 
-        # If a File Search Store name is configured, attach it; otherwise plain chat.
-        safety_settings = None
-        generation_config = dict(temperature=self.temperature, max_output_tokens=self.max_tokens)
+        # Use the new client (falls back to GEMINI_API_KEY if api_key empty)
+        client = genai.Client(api_key=self.api_key or None)
 
-        def _call() -> str:
-            if self.file_search_store:
-                try:
-                    model = genai.GenerativeModel(
-                        model_name=self.model,
-                        system_instruction=system_text or "",
-                        tools=[{"file_search": {"max_chunks_per_file": 4}}],
-                        tool_config={"file_search": {"search_scope": {"namespace": self.file_search_store}}},
-                        generation_config=generation_config,
-                        safety_settings=safety_settings,
+        # Attach File Search only when a store name is configured
+        tools = None
+        if self.file_search_store:
+            tools = [
+                types.Tool(
+                    file_search=types.FileSearch(
+                        file_search_store_names=[self.file_search_store]
+                        # Optionally add: metadata_filter="tenant=acme"
                     )
-                except Exception:
-                    # If store binding fails, fall back to a plain model
-                    model = genai.GenerativeModel(
-                        model_name=self.model,
-                        system_instruction=system_text or "",
-                        generation_config=generation_config,
-                        safety_settings=safety_settings,
-                    )
-            else:
-                model = genai.GenerativeModel(
-                    model_name=self.model,
-                    system_instruction=system_text or "",
-                    generation_config=generation_config,
-                    safety_settings=safety_settings,
                 )
-            r = model.generate_content(user_text, request_options={"timeout": self.timeout})
-            return (r.text or "").strip()
-        return self._with_retries(_call)
+            ]
+
+        cfg = types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+            tools=tools,
+            system_instruction=system_text or "",
+        )
+
+        r = client.models.generate_content(
+            model=self.model,
+            contents=user_text,
+            config=cfg,
+            request_options={"timeout": self.timeout},
+        )
+        return (getattr(r, "text", None) or "").strip()
+
 
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
@@ -263,8 +261,7 @@ AI_DEFAULT_MAX_TOKENS = 512
 
 
 def _get_ai_config() -> Dict[str, Any]:
-
-    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")  # FIXED default
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")  # default fixed to 'gemini'
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
@@ -272,8 +269,10 @@ def _get_ai_config() -> Dict[str, Any]:
     file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
     file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
+    # NEW: these are used later in send()
+    allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
+    redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
 
-    # keep any other values you already had here (temperature, max tokens, etc.)
     temperature = 0.3
     max_tokens = 1536
     timeout = 60
@@ -287,6 +286,8 @@ def _get_ai_config() -> Dict[str, Any]:
         "file_search_enabled": file_search_enabled,
         "file_search_store": file_search_store,
         "file_search_index": file_search_index,
+        "allowed_regex": allowed_regex,     # NEW
+        "redact_pii": redact_pii,           # NEW
         "temperature": temperature,
         "max_tokens": max_tokens,
         "timeout": timeout,

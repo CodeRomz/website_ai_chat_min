@@ -228,17 +228,29 @@ class ResConfigSettings(models.TransientModel):
 
         # Upload + index with chunking + metadata
         # NOTE: Do NOT pass mime_type here; the SDK does not accept it on this method.
-        op = client.file_search_stores.upload_to_file_search_store(
+        # (1) Upload the raw file to Files API with explicit mime_type
+        uploaded = client.files.upload(
             file=real_path,
-            file_search_store_name=store_name,
             config={
-                "display_name": os.path.basename(real_path),
-                "chunking_config": {
-                    "white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}
-                },
-                "custom_metadata": [
-                    {"key": "source", "string_value": os.path.basename(real_path)},
-                ],
+                # Visible in citations (Files API uses 'name' here)
+                "name": os.path.basename(real_path),
+                # Critical: set MIME here to avoid guessing failures
+                "mime_type": mime_type,
+            },
+        )
+
+        # (2) Import the uploaded File into the File Search Store
+        # import_file supports custom_metadata and chunking_config directly.
+        op = client.file_search_stores.import_file(
+            file_search_store_name=store_name,
+            file_name=uploaded.name,  # e.g., 'files/abc-123'
+            custom_metadata=[
+                {"key": "source", "string_value": os.path.basename(real_path)},
+                # keep/add any other tags you use (e.g., tenant)
+                # {"key": "tenant", "string_value": self.env.cr.dbname},
+            ],
+            chunking_config={
+                "white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}
             },
         )
 
