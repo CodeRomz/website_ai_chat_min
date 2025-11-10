@@ -360,9 +360,21 @@ class AiChatController(http.Controller):
         if len(q) > 4000:
             return {"ok": False, "reply": _("Question too long (max 4000 chars).")}
 
+        # ----------------------------------------------------------------------
+        # Debug: log the incoming question (avoid logging PII in production)
+        # Use %r to quote the string safely
+        _logger.info("AI Chat: received question=%r", q)
+
         cfg = _get_ai_config()
         if not cfg["api_key"]:
             return {"ok": False, "reply": _("AI provider API key is not configured. Please contact the administrator.")}
+
+        # Debug: log the key configuration values
+        _logger.debug(
+            "AI Chat config: provider=%s, model=%s, file_search_enabled=%s, store=%s",
+            cfg.get("provider"), cfg.get("model"),
+            cfg.get("file_search_enabled"), cfg.get("file_search_store"),
+        )
 
         # Optional: per-request store override
         override_store = ""
@@ -397,15 +409,23 @@ class AiChatController(http.Controller):
 
         # Compose system prompt
         system_text = _build_system_preamble(cfg["system_prompt"], [])
+        # Debug: log the system prompt that will be sent to the LLM
+        _logger.debug("AI Chat system prompt=%r", system_text)
 
         # If File Search isn't enabled, ensure we don't attach a store
         effective_store = cfg["file_search_store"] if cfg["file_search_enabled"] else ""
         cfg["file_search_store"] = effective_store
+        # Debug: log the effective store being used for this request
+        _logger.debug("AI Chat effective store=%s", effective_store)
 
         # Call provider
         provider = _get_provider(cfg)
+        # Debug: log which provider and model we are calling
+        _logger.info("AI Chat calling provider=%s, model=%s", cfg.get("provider"), cfg.get("model"))
         try:
             answer_text = provider.ask(system_text, outbound_q).strip()
+            # Debug: log the length of the returned answer (avoid logging full text)
+            _logger.info("AI Chat provider returned answer length=%d", len(answer_text))
         except Exception as e:
             _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
             return {"ok": False, "reply": _("Network or provider error. Please try again.")}
@@ -426,4 +446,6 @@ class AiChatController(http.Controller):
 
         # Cache and return
         _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
+        # Debug: log that we are caching the answer by the cache key
+        _logger.debug("AI Chat caching answer for key=%r", cache_key)
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
