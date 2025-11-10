@@ -269,8 +269,8 @@ class ResConfigSettings(models.TransientModel):
         uploaded = client.files.upload(
             file=real_path,
             config={
-                "name": os.path.basename(real_path),  # shows in citations
-                "mime_type": mime_type,               # <-- critical for your error
+                "display_name": os.path.basename(real_path),  # human label shown in citations
+                "mime_type": mime_type,  # keep forcing MIME here
             },
         )
 
