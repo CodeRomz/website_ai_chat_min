@@ -310,7 +310,7 @@ class ResConfigSettings(models.TransientModel):
             "tag": "display_notification",
             "params": {
                 "title": _("Gemini File Search"),
-                "message": _("Indexed: %s → %s") % (os.path.basename(real_path), store_name),
+                "message": _("Indexed: %s → %s") % (os.path.basename(real_path), self.file_store_id),
                 "sticky": False,
                 "type": "success",
             },
