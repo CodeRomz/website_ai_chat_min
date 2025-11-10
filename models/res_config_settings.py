@@ -165,6 +165,17 @@ class ResConfigSettings(models.TransientModel):
         ),
         size=256,
     )
+
+    file_store_id = fields.Char(
+        string="File Store ID",
+        config_parameter="website_ai_chat_min.file_store_id",
+        help=(
+            "File Store ID From Gemini "
+        ),
+        size=256,
+    )
+
+
     file_search_index = fields.Char(
         string="File Search Index File",
         config_parameter="website_ai_chat_min.file_search_index",

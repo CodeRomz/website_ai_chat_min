@@ -69,6 +69,12 @@
                              help="Fully-qualified FileSearchStore resource (e.g., 'fileSearchStores/my-store') that has been populated with your documents via the Gemini API.">
                         <field name="file_search_store"/>
                     </setting>
+
+                    <setting string="File Store ID"
+                             help="File Store ID From Gemini ">
+                        <field name="file_store_id"/>
+                    </setting>
+
                     <setting string="File Search Index File"
                              help="Index file where the gemini file search will initialize first.">
                         <field name="file_search_index"/>
