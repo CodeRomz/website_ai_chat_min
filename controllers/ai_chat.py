@@ -229,7 +229,17 @@ class _GeminiProvider(_ProviderBase):
         # `http_options` at client construction time to set the timeout.
         client = genai.Client(
             api_key=self.api_key or None,
-            http_options=types.HttpOptions(timeout=self.timeout),
+            http_options=types.HttpOptions(
+                timeout=self.timeout,  # already 60 in cfg
+                # If a corporate proxy is REQUIRED, set it explicitly:
+                # client_args={'proxy': 'http://user:pass@proxy.host:port'},
+
+                # If env proxies are misconfigured and you want to IGNORE them:
+                # httpx_client=httpx.Client(trust_env=False),
+
+                # If your org uses a custom CA bundle (MITM proxy), point to it:
+                # client_args={'verify': '/etc/ssl/certs/corporate-root-ca.pem'},
+            )
         )
 
         # Attach File Search only when a store name is configured
