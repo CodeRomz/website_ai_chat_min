@@ -66,7 +66,7 @@
                         <field name="file_search_enabled"/>
                     </setting>
                     <setting string="File Store Display name"
-                             help="Fully-qualified FileSearchStore resource (e.g., 'fileSearchStores/my-store') that has been populated with your documents via the Gemini API.">
+                             help="Fully-qualified FileSearchStore Human Friendly Name">
                         <field name="file_store_display_name"/>
                     </setting>
 
