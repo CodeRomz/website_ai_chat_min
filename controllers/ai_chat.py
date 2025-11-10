@@ -215,72 +215,68 @@ class _GeminiProvider(_ProviderBase):
         super().__init__(*a, **kw)
         self.file_search_store = (file_search_store or "").strip()
 
-    class _GeminiProvider(_ProviderBase):
-        def __init__(self, *a, file_search_store: str = "", **kw):
-            super().__init__(*a, **kw)
-            self.file_search_store = (file_search_store or "").strip()
+    def ask(self, system_text: str, user_text: str) -> str:
+        try:
+            # GenAI SDK + types
+            from google import genai
+            from google.genai import types
+            # httpx for low-level HTTP client control
+            import httpx
+        except Exception:
+            return "The Gemini client library is not installed on the server."
 
-        def ask(self, system_text: str, user_text: str) -> str:
-            try:
-                # GenAI SDK + types
-                from google import genai
-                from google.genai import types
-                # httpx for low-level HTTP client control
-                import httpx
-            except Exception:
-                return "The Gemini client library is not installed on the server."
-
-            # Build an httpx client that:
-            # - ignores proxy/CA environment variables (trust_env=False)
-            # - forces IPv4 path (HTTPTransport(local_address='0.0.0.0'))
-            # - disables HTTP/2 (http2=False)
-            # - uses our configured timeout
-            try:
-                transport = httpx.HTTPTransport(local_address="0.0.0.0")
-                _httpx_client = httpx.Client(
-                    trust_env=False,  # ignore HTTP(S)_PROXY, SSL_CERT_FILE, etc.
-                    http2=False,  # avoid any HTTP/2 edge cases
-                    transport=transport,  # force IPv4 path
-                    timeout=self.timeout,  # socket + connect timeouts
-                )
-            except Exception as e:
-                _logger.warning(
-                    "Gemini: custom httpx client setup failed; falling back to defaults: %s",
-                    e,
-                )
-                _httpx_client = None  # SDK will fall back to its default httpx client
-
-            client = genai.Client(
-                api_key=self.api_key or None,
-                http_options=types.HttpOptions(
-                    timeout=self.timeout,  # SDK-level timeout
-                    httpx_client=_httpx_client,
-                ),
+        # Build an httpx client that:
+        # - ignores proxy/CA environment variables (trust_env=False)
+        # - forces IPv4 path (HTTPTransport(local_address='0.0.0.0'))
+        # - disables HTTP/2 (http2=False)
+        # - uses our configured timeout
+        try:
+            transport = httpx.HTTPTransport(local_address="0.0.0.0")
+            _httpx_client = httpx.Client(
+                trust_env=False,          # ignore HTTP(S)_PROXY, SSL_CERT_FILE, etc.
+                http2=False,              # avoid any HTTP/2 edge cases
+                transport=transport,      # force IPv4 path
+                timeout=self.timeout,     # socket + connect timeouts
             )
+        except Exception as e:
+            _logger.warning(
+                "Gemini: custom httpx client setup failed; falling back to defaults: %s",
+                e,
+            )
+            _httpx_client = None  # SDK will fall back to its default httpx client
 
-            tools = None
-            if self.file_search_store:
-                tools = [
-                    types.Tool(
-                        file_search=types.FileSearch(
-                            file_search_store_names=[self.file_search_store]
-                        )
+        client = genai.Client(
+            api_key=self.api_key or None,
+            http_options=types.HttpOptions(
+                timeout=self.timeout,     # SDK-level timeout
+                httpx_client=_httpx_client,
+            ),
+        )
+
+        tools = None
+        if self.file_search_store:
+            tools = [
+                types.Tool(
+                    file_search=types.FileSearch(
+                        file_search_store_names=[self.file_search_store]
                     )
-                ]
+                )
+            ]
 
-            cfg = types.GenerateContentConfig(
-                temperature=self.temperature,
-                max_output_tokens=self.max_tokens,
-                tools=tools,
-                system_instruction=system_text or "",
-            )
+        cfg = types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+            tools=tools,
+            system_instruction=system_text or "",
+        )
 
-            r = client.models.generate_content(
-                model=self.model,
-                contents=user_text,
-                config=cfg,
-            )
-            return (getattr(r, "text", None) or "").strip()
+        r = client.models.generate_content(
+            model=self.model,
+            contents=user_text,
+            config=cfg,
+        )
+        return (getattr(r, "text", None) or "").strip()
+
 
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
