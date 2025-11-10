@@ -188,7 +188,7 @@ class ResConfigSettings(models.TransientModel):
         if not api_key:
             raise UserError(_("Set the Gemini API Key (or GEMINI_API_KEY env) before syncing."))
 
-        # Paths
+        # Paths (use realpath to defeat symlink escapes)
         docs_root = (self.docs_folder or ICP.get_param("website_ai_chat_min.docs_folder") or "").strip()
         rel_name = (self.file_search_index or ICP.get_param("website_ai_chat_min.file_search_index") or "").strip()
 
@@ -197,14 +197,18 @@ class ResConfigSettings(models.TransientModel):
         if not rel_name:
             raise UserError(_("Set 'File Search Index File' (relative to docs_folder)."))
 
-        abs_root = os.path.abspath(docs_root)
-        abs_path = os.path.abspath(os.path.normpath(os.path.join(abs_root, rel_name)))
+        real_root = os.path.realpath(docs_root)
+        real_path = os.path.realpath(os.path.join(real_root, rel_name))
 
-        # basic traversal safety + existence
-        if not abs_path.startswith(abs_root + os.sep) and abs_path != abs_root:
+        if not (real_path == real_root or real_path.startswith(real_root + os.sep)):
             raise UserError(_("Unsafe path. The index file must be inside the 'PDF Folder'."))
-        if not os.path.isfile(abs_path):
-            raise UserError(_("File not found or not a file: %s") % abs_path)
+        if not os.path.isfile(real_path):
+            raise UserError(_("File not found or not a file: %s") % real_path)
+
+        # Preflight size (Gemini limit ~100 MB per file)
+        size_mb = os.path.getsize(real_path) / (1024 * 1024)
+        if size_mb > 100:
+            raise UserError(_("The file is %.1f MB which exceeds the 100 MB limit.") % size_mb)
 
         # Client
         client = genai.Client(api_key=api_key)
@@ -217,15 +221,25 @@ class ResConfigSettings(models.TransientModel):
             ICP.set_param("website_ai_chat_min.file_search_store", store_name)
             self.file_search_store = store_name  # reflect immediately
 
-        # Determine MIME type (this is the key fix)
-        mime_type = _guess_mime(abs_path)
+        # Determine MIME type
+        mime_type = _guess_mime(real_path)
 
-        # Upload + index the single file (keep display name user-friendly)
+        _logger.info("Gemini File Search: uploading %s (mime=%s) to store %s", real_path, mime_type, store_name)
+
+        # Upload + index with chunking + metadata to boost retrieval and citations
         op = client.file_search_stores.upload_to_file_search_store(
-            file=abs_path,
+            file=real_path,
             file_search_store_name=store_name,
-            config={"display_name": os.path.basename(abs_path)},
-            mime_type=mime_type,  # <— FIX: pass explicit MIME type
+            config={
+                "display_name": os.path.basename(real_path),
+                "chunking_config": {
+                    "white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}
+                },
+                "custom_metadata": [
+                    {"key": "source", "string_value": os.path.basename(real_path)},
+                ],
+            },
+            mime_type=mime_type,
         )
 
         # Poll the LRO (max ~5 minutes)
@@ -242,7 +256,7 @@ class ResConfigSettings(models.TransientModel):
             "tag": "display_notification",
             "params": {
                 "title": _("Gemini File Search"),
-                "message": _("Indexed: %s → %s") % (os.path.basename(abs_path), store_name),
+                "message": _("Indexed: %s → %s") % (os.path.basename(real_path), store_name),
                 "sticky": False,
                 "type": "success",
             },
