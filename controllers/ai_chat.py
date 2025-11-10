@@ -216,7 +216,17 @@ class _GeminiProvider(_ProviderBase):
         # strip to avoid accidental whitespace in store names
         self.file_search_store = (file_search_store or "").strip()
 
+
+
     def ask(self, system_text: str, user_text: str) -> str:
+        try:
+            from google import genai
+            from google.genai import types
+            import httpx
+        except Exception:
+            return "The Gemini client library is not installed on the server."
+
+
         try:
             # Configure HTTP time‑outs and disable proxies via client_args.
             http_options = types.HttpOptions(
