@@ -65,9 +65,9 @@
                              help="When using the Gemini provider, offload document retrieval to a FileSearchStore instead of scanning local documents.  Requires specifying the store name below.">
                         <field name="file_search_enabled"/>
                     </setting>
-                    <setting string="File Search Store Name"
+                    <setting string="File Store Display name"
                              help="Fully-qualified FileSearchStore resource (e.g., 'fileSearchStores/my-store') that has been populated with your documents via the Gemini API.">
-                        <field name="file_search_store"/>
+                        <field name="file_store_display_name"/>
                     </setting>
 
                     <setting string="File Store ID"

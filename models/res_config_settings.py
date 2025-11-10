@@ -56,6 +56,12 @@ def _guess_mime(path: str) -> str:
     return m
 
 
+def _normalize_store(name: str) -> str:
+    """Ensure we always use a fully-qualified store resource name."""
+    name = (name or "").strip()
+    return name if (not name or name.startswith("fileSearchStores/")) else f"fileSearchStores/{name}"
+
+
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
@@ -145,7 +151,7 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ---------------------------------------------------------------------
-    # Gemini File Search (kept)
+    # Gemini File Search
     # ---------------------------------------------------------------------
     file_search_enabled = fields.Boolean(
         string="Enable Gemini File Search",
@@ -156,26 +162,21 @@ class ResConfigSettings(models.TransientModel):
         ),
         default=False,
     )
-    file_search_store = fields.Char(
+    file_store_display_name = fields.Char(
         string="File Search Store Name",
-        config_parameter="website_ai_chat_min.file_search_store",
+        config_parameter="website_ai_chat_min.file_store_display_name",
         help=(
             "The fully-qualified FileSearchStore resource name returned by the API "
             "(auto-created on first sync)."
         ),
         size=256,
     )
-
     file_store_id = fields.Char(
         string="File Store ID",
         config_parameter="website_ai_chat_min.file_store_id",
-        help=(
-            "File Store ID From Gemini "
-        ),
+        help="File Store ID From Gemini",
         size=256,
     )
-
-
     file_search_index = fields.Char(
         string="File Search Index File",
         config_parameter="website_ai_chat_min.file_search_index",
@@ -196,7 +197,7 @@ class ResConfigSettings(models.TransientModel):
                 raise ValidationError(_("Invalid docs folder path. Use an absolute, safe path."))
 
     # ---------------------------------------------------------------------
-    # Helpers (kept)
+    # Helpers
     # ---------------------------------------------------------------------
     def _resolve_api_key(self) -> str:
         """Prefer the transient field, then ICP, then the environment."""
@@ -209,7 +210,7 @@ class ResConfigSettings(models.TransientModel):
         )
 
     # ---------------------------------------------------------------------
-    # Admin button: Sync Index (ONLY the MIME-related upload logic changed)
+    # Admin button: Sync Index (create/reuse store, two-step upload → import)
     # ---------------------------------------------------------------------
     def file_search_index_sync(self):
         """
@@ -255,28 +256,33 @@ class ResConfigSettings(models.TransientModel):
         # Client
         client = genai.Client(api_key=api_key)
 
-        # Resolve or create store
-        # store_name = (self.file_search_store or ICP.get_param("website_ai_chat_min.file_search_store") or "").strip()
-        # if not store_name:
-        #     store = client.file_search_stores.create(config={"display_name": "odoo-kb"})
-        #     store_name = store.name
-        #     ICP.set_param("website_ai_chat_min.file_search_store", store_name)
-        #     self.file_search_store = store_name  # reflect immediately
-
-        store = client.file_search_stores.create(
-            config={"display_name": self.file_search_store}  # any human-friendly label
+        # ---- Resolve or create store (persist & normalize) ----
+        # Try to reuse whatever is already configured (wizard first, then ICP)
+        store_name = (
+            (self.file_store_id or "").strip()
         )
 
-        self.file_store_id = store.name
+        if store_name:
+            store_name = _normalize_store(store_name)
+            # Validate that the store exists (will raise 404 if wrong project/id)
+            client.file_search_stores.get(name=store_name)  # per docs, pass fully-qualified name
+        else:
+            # Create new store; use display_name as human label
+            store = client.file_search_stores.create(
+                config={"display_name": (self.file_store_display_name or "odoo-kb")}
+            )
+            store_name = store.name  # fully-qualified (e.g., "fileSearchStores/xyz")
+            # Persist to transient (for immediate UI) and system params (for later use in chat)
+            self.write({"file_store_id": store_name,})
+            ICP.set_param("website_ai_chat_min.file_store_id", store_name)
+
+        # Keep wizard fields in sync if admin typed a bare id
+        if self.file_store_id != store_name:
+            self.write({"file_store_id": store_name})
 
         # Determine MIME for logging & explicit Files API config
         mime_type = _guess_mime(real_path)
-        _logger.info(
-            "Gemini File Search: uploading %s (mime=%s) to store %s",
-            real_path,
-            mime_type,
-            self.file_store_id,
-        )
+        _logger.info("Gemini File Search: uploading %s (mime=%s) to store %s", real_path, mime_type, store_name)
 
         # ---------------------------
         # TWO-STEP FLOW (reliable):
@@ -287,13 +293,16 @@ class ResConfigSettings(models.TransientModel):
             file=real_path,
             config={
                 "display_name": os.path.basename(real_path),  # human label shown in citations
-                "mime_type": mime_type,  # keep forcing MIME here
+                "mime_type": mime_type,                       # force MIME (reliable)
             },
         )
 
         op = client.file_search_stores.import_file(
-            file_search_store_name=self.file_store_id,
-            file_name=uploaded.name,  # e.g. "files/abc123"
+            file_search_store_name=store_name,  # fully-qualified name
+            file_name=uploaded.name,            # e.g. "files/abc123"
+            # You can add metadata/chunking if desired:
+            # custom_metadata=[{"key": "source", "string_value": os.path.basename(real_path)}],
+            # chunking_config={"white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}},
         )
 
         # Poll the LRO (max ~5 minutes)
@@ -310,7 +319,7 @@ class ResConfigSettings(models.TransientModel):
             "tag": "display_notification",
             "params": {
                 "title": _("Gemini File Search"),
-                "message": _("Indexed: %s → %s") % (os.path.basename(real_path), self.file_store_id),
+                "message": _("Indexed: %s → %s") % (os.path.basename(real_path), store_name),
                 "sticky": False,
                 "type": "success",
             },
