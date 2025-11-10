@@ -14,11 +14,6 @@ _logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Caching layer
-#
-# To speed up repeated lookups, we maintain a simple in-memory cache of
-# previously asked questions. Each entry maps the question text to the AI's
-# reply and the constructed UI payload.
-# This lives in process memory; it resets when the Odoo server restarts.
 _QA_CACHE: Dict[str, Dict[str, object]] = {}
 
 # -----------------------------------------------------------------------------
@@ -41,7 +36,6 @@ def _throttle() -> bool:
     now = time.time()
     ip = _client_ip()
     bucket = _RATE_BUCKETS.setdefault(ip, [])
-    # Drop old entries
     cutoff = now - RATE_WINDOW_SECS
     while bucket and bucket[0] < cutoff:
         bucket.pop(0)
@@ -89,13 +83,32 @@ def _bool_icp(name: str, default: bool) -> bool:
 
 
 # -----------------------------------------------------------------------------
+# Store helpers (normalize + fetch from ICP)
+def _normalize_store(name: str) -> str:
+    """
+    Ensure we always use a fully-qualified File Search Store name.
+    Valid form is: fileSearchStores/<id>
+    """
+    name = (name or "").strip()
+    return name if (not name or name.startswith("fileSearchStores/")) else f"fileSearchStores/{name}"
+
+
+def _get_store_from_icp() -> str:
+    """
+    Prefer the dedicated file_store_id if present, else fallback to the older field.
+    """
+    s1 = _get_icp_param("website_ai_chat_min.file_store_id", "")
+    s2 = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    return _normalize_store(s1 or s2)
+
+
+# -----------------------------------------------------------------------------
 # Allowed-scope regex (admin-controlled)
 def _match_allowed(pattern: str, text: str, timeout_ms: int = 120) -> bool:
     """Return True if text matches admin regex. Fail-closed if regex library missing."""
     if not pattern:
         return True
     try:
-        # Use 'regex' module if available (supports timeouts), else fallback to re with a best effort.
         try:
             import regex as regex_safe
         except Exception:
@@ -104,7 +117,6 @@ def _match_allowed(pattern: str, text: str, timeout_ms: int = 120) -> bool:
             return bool(regex_safe.search(pattern, text, flags=regex_safe.I | regex_safe.M, timeout=timeout_ms))
         return bool(re_std.search(pattern, text, flags=re_std.I | re_std.M))
     except Exception:
-        # Fail-closed if admin configured a pattern but evaluation errored
         return False
 
 
@@ -114,7 +126,6 @@ def _redact_pii(text: str) -> str:
     try:
         if not text:
             return text
-        # Very rough masks to avoid leaking IDs
         text = re_std.sub(r"([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", r"***@***", text)
         text = re_std.sub(r"\+?\d[\d\s().-]{6,}\d", "***", text)            # phones
         text = re_std.sub(r"\b[A-Za-z0-9]{8,12}\b", "***", text)            # simple IDs
@@ -167,7 +178,7 @@ class _OpenAIProvider(_ProviderBase):
         except Exception:
             return "The OpenAI client library is not installed on the server."
         openai.api_key = self.api_key
-        # Prefer Chat Completions if available in your lib version
+
         def _call() -> str:
             try:
                 resp = openai.ChatCompletion.create(
@@ -183,7 +194,6 @@ class _OpenAIProvider(_ProviderBase):
                 txt = resp["choices"][0]["message"]["content"].strip()
                 return txt
             except AttributeError:
-                # Fallback to Responses API if using newer SDK
                 client = openai.OpenAI(api_key=self.api_key)
                 r = client.chat.completions.create(
                     model=self.model,
@@ -196,6 +206,7 @@ class _OpenAIProvider(_ProviderBase):
                     timeout=self.timeout,
                 )
                 return (r.choices[0].message.content or "").strip()
+
         return self._with_retries(_call)
 
 
@@ -206,13 +217,12 @@ class _GeminiProvider(_ProviderBase):
 
     def ask(self, system_text: str, user_text: str) -> str:
         try:
-            # NEW GA SDK
+            # New Google GenAI SDK
             from google import genai
             from google.genai import types
         except Exception:
             return "The Gemini client library is not installed on the server."
 
-        # Use the new client (falls back to GEMINI_API_KEY if api_key empty)
         client = genai.Client(api_key=self.api_key or None)
 
         # Attach File Search only when a store name is configured
@@ -222,7 +232,6 @@ class _GeminiProvider(_ProviderBase):
                 types.Tool(
                     file_search=types.FileSearch(
                         file_search_store_names=[self.file_search_store]
-                        # Optionally add: metadata_filter="tenant=acme"
                     )
                 )
             ]
@@ -243,7 +252,6 @@ class _GeminiProvider(_ProviderBase):
         return (getattr(r, "text", None) or "").strip()
 
 
-
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
     if cfg["provider"] == "gemini":
         return _GeminiProvider(
@@ -261,15 +269,17 @@ AI_DEFAULT_MAX_TOKENS = 512
 
 
 def _get_ai_config() -> Dict[str, Any]:
-    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")  # default fixed to 'gemini'
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
+
     file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
-    file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    # NEW: prefer file_store_id, fallback to file_search_store; normalize to fully-qualified form
+    normalized_store = _get_store_from_icp()
+
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
-    # NEW: these are used later in send()
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
     redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
 
@@ -284,10 +294,10 @@ def _get_ai_config() -> Dict[str, Any]:
         "system_prompt": system_prompt,
         "docs_folder": docs_folder,
         "file_search_enabled": file_search_enabled,
-        "file_search_store": file_search_store,
+        "file_search_store": normalized_store,   # <- fully-qualified store goes here
         "file_search_index": file_search_index,
-        "allowed_regex": allowed_regex,     # NEW
-        "redact_pii": redact_pii,           # NEW
+        "allowed_regex": allowed_regex,
+        "redact_pii": redact_pii,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "timeout": timeout,
@@ -326,7 +336,6 @@ class AiChatController(http.Controller):
     def can_load(self):
         """Login gate for mounting the widget; returns a minimal boolean."""
         try:
-            # Keep it simple: allow public mount; sites can lock with allowed_regex later
             return {"show": True}
         except Exception as e:
             _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
@@ -337,6 +346,9 @@ class AiChatController(http.Controller):
         """
         Validates, composes prompt, calls provider with retries,
         and returns a compact, structured reply.
+
+        Optional request override:
+          { "message": "...", "store": "fileSearchStores/xyz" }
         """
         if not _throttle():
             return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
@@ -352,7 +364,19 @@ class AiChatController(http.Controller):
         if not cfg["api_key"]:
             return {"ok": False, "reply": _("AI provider API key is not configured. Please contact the administrator.")}
 
-        # Allow-list gating (optional)
+        # Optional: per-request store override
+        override_store = ""
+        try:
+            payload = request.jsonrequest or {}
+            if isinstance(payload, dict):
+                override_store = _normalize_store((payload.get("store") or "").strip())
+        except Exception:
+            override_store = ""
+
+        if override_store:
+            cfg["file_search_store"] = override_store
+
+        # Respect allow-list (optional)
         if cfg["allowed_regex"] and not _match_allowed(cfg["allowed_regex"], q):
             return {"ok": False, "reply": _("Your question is not within the allowed scope.")}
 
@@ -362,10 +386,21 @@ class AiChatController(http.Controller):
         cache_key = outbound_q
         cached = _QA_CACHE.get(cache_key)
         if cached:
-            return {"ok": True, "reply": cached["reply"], "ui": dict(cached["ui"])}
+            # decorate cached UI with current ai_status as a convenience
+            ui = dict(cached["ui"])
+            ui.setdefault("ai_status", {
+                "provider": cfg["provider"],
+                "model": cfg["model"],
+                "store": cfg["file_search_store"] if cfg["file_search_enabled"] else None,
+            })
+            return {"ok": True, "reply": cached["reply"], "ui": ui}
 
-        # Compose system prompt (no snippets anymore)
+        # Compose system prompt
         system_text = _build_system_preamble(cfg["system_prompt"], [])
+
+        # If File Search isn't enabled, ensure we don't attach a store
+        effective_store = cfg["file_search_store"] if cfg["file_search_enabled"] else ""
+        cfg["file_search_store"] = effective_store
 
         # Call provider
         provider = _get_provider(cfg)
@@ -375,16 +410,19 @@ class AiChatController(http.Controller):
             _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
             return {"ok": False, "reply": _("Network or provider error. Please try again.")}
 
-        # Shape minimal UI
+        # Shape minimal UI (now includes ai_status so the frontend can show the active store)
         ui = {
             "title": "",
             "summary": "",
-            "answer_md": answer_text,
+            "answer_md": answer_text[:1800] if answer_text else "",
             "citations": [],
             "suggestions": [],
+            "ai_status": {
+                "provider": cfg["provider"],
+                "model": cfg["model"],
+                "store": effective_store or None,
+            },
         }
-        MAX_ANSWER_CHARS = 1800
-        ui["answer_md"] = (ui["answer_md"] or "")[:MAX_ANSWER_CHARS]
 
         # Cache and return
         _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
