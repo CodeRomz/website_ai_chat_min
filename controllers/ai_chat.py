@@ -263,32 +263,33 @@ AI_DEFAULT_MAX_TOKENS = 512
 
 
 def _get_ai_config() -> Dict[str, Any]:
-    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini-2.0-flash")
+
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")  # FIXED default
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
-    allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
-
-    timeout = _int_icp("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT)
-    temperature = _float_icp("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE)
-    max_tokens = _int_icp("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS)
-    redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
-
-    # Optional Gemini File Search
-    file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
     file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
+    file_search_store = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
+
+    # keep any other values you already had here (temperature, max tokens, etc.)
+    temperature = 0.3
+    max_tokens = 1536
+    timeout = 60
 
     return {
         "provider": provider,
         "api_key": api_key,
         "model": model,
         "system_prompt": system_prompt,
-        "allowed_regex": allowed_regex,
-        "timeout": timeout,
+        "docs_folder": docs_folder,
+        "file_search_enabled": file_search_enabled,
+        "file_search_store": file_search_store,
+        "file_search_index": file_search_index,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "redact_pii": redact_pii,
-        "file_search_store": (file_search_store if (provider == "gemini" and file_search_enabled) else ""),
+        "timeout": timeout,
     }
 
 
