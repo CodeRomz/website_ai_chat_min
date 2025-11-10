@@ -7,8 +7,29 @@ from google import genai
 from google.genai import types
 import time
 import os
+import mimetypes
+
+_MIME_MAP = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+}
 
 
+def _guess_mime(path: str) -> str:
+    """Return a safe MIME type for the given path or raise a clear error."""
+    ext = os.path.splitext(path)[1].lower()
+    m = _MIME_MAP.get(ext) or mimetypes.guess_type(path)[0]
+    if not m:
+        # Fallback to octet-stream is possible, but better to fail loudly so you know what to upload.
+        raise UserError(
+            _("Unsupported or unknown file type for: %s. Use .pdf, .docx, .md, or .txt (or extend the MIME map).")
+            % path
+        )
+    return m
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
@@ -120,12 +141,17 @@ class ResConfigSettings(models.TransientModel):
         size=256,
     )
 
-    @api.constrains('docs_folder')
+    # ----------------------------
+    # Validations
+    # ----------------------------
+    @api.constrains("docs_folder")
     def _check_docs_folder(self):
         for rec in self:
-            path = (rec.docs_folder or '').strip()
-            if path and ('..' in path or path.startswith('~')):
-                raise ValidationError(_("Invalid docs folder path."))
+            path = (rec.docs_folder or "").strip()
+            if not path:
+                continue
+            if path.startswith("~") or ".." in path:
+                raise ValidationError(_("Invalid docs folder path. Use an absolute, safe path."))
 
     # ----------------------------
     # Helpers
@@ -135,9 +161,9 @@ class ResConfigSettings(models.TransientModel):
         self.ensure_one()
         ICP = self.env["ir.config_parameter"].sudo()
         return (
-            (self.ai_api_key or "").strip()
-            or (ICP.get_param("website_ai_chat_min.ai_api_key") or "").strip()
-            or (os.getenv("GEMINI_API_KEY") or "").strip()
+                (self.ai_api_key or "").strip()
+                or (ICP.get_param("website_ai_chat_min.ai_api_key") or "").strip()
+                or (os.getenv("GEMINI_API_KEY") or "").strip()
         )
 
     # ----------------------------
@@ -191,11 +217,15 @@ class ResConfigSettings(models.TransientModel):
             ICP.set_param("website_ai_chat_min.file_search_store", store_name)
             self.file_search_store = store_name  # reflect immediately
 
+        # Determine MIME type (this is the key fix)
+        mime_type = _guess_mime(abs_path)
+
         # Upload + index the single file (keep display name user-friendly)
         op = client.file_search_stores.upload_to_file_search_store(
             file=abs_path,
             file_search_store_name=store_name,
             config={"display_name": os.path.basename(abs_path)},
+            mime_type=mime_type,  # <— FIX: pass explicit MIME type
         )
 
         # Poll the LRO (max ~5 minutes)
@@ -217,6 +247,3 @@ class ResConfigSettings(models.TransientModel):
                 "type": "success",
             },
         }
-
-
-

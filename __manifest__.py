@@ -22,7 +22,7 @@
         ],
     },
     "external_dependencies": {
-        "python": ["openai", "google-generativeai", "pypdf"]
+        "python": ["openai", "google-generativeai", "pypdf", "google-genai"]
     },
     "description": """
 Website AI Chat (Minimal) for Odoo 17.0 CE:

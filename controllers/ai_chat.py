@@ -206,7 +206,7 @@ class _GeminiProvider(_ProviderBase):
 
     def ask(self, system_text: str, user_text: str) -> str:
         try:
-            import google.generativeai as genai
+            from google import genai
         except Exception:
             return "The Gemini client library is not installed on the server."
         genai.configure(api_key=self.api_key)
