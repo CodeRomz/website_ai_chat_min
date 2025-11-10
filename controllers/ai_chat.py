@@ -179,6 +179,8 @@ class _OpenAIProvider(_ProviderBase):
             return "The OpenAI client library is not installed on the server."
         openai.api_key = self.api_key
 
+        timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
+
         def _call() -> str:
             try:
                 resp = openai.ChatCompletion.create(
@@ -189,7 +191,7 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    request_timeout=self.timeout,
+                    request_timeout=timeout_ms,
                 )
                 txt = resp["choices"][0]["message"]["content"].strip()
                 return txt
@@ -203,7 +205,7 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    timeout=self.timeout,
+                    timeout=timeout_ms,
                 )
                 return (r.choices[0].message.content or "").strip()
 
@@ -217,6 +219,7 @@ class _GeminiProvider(_ProviderBase):
         self.file_search_store = (file_search_store or "").strip()
 
     def ask(self, system_text: str, user_text: str) -> str:
+        timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
         try:
             from google import genai
             from google.genai import types
@@ -249,7 +252,7 @@ class _GeminiProvider(_ProviderBase):
             transport_ipv4 = httpx.HTTPTransport(local_address="0.0.0.0")  # force IPv4
             clients.append((
                 "noenv-ipv4-h1",
-                httpx.Client(trust_env=False, http2=False, transport=transport_ipv4, timeout=self.timeout)
+                httpx.Client(trust_env=False, http2=False, transport=transport_ipv4, timeout=timeout_ms)
             # ignore env
             ))
         except Exception as e:
@@ -260,7 +263,7 @@ class _GeminiProvider(_ProviderBase):
             transport_ipv4_b = httpx.HTTPTransport(local_address="0.0.0.0")
             clients.append((
                 "env-ipv4-h1",
-                httpx.Client(trust_env=True, http2=False, transport=transport_ipv4_b, timeout=self.timeout)
+                httpx.Client(trust_env=True, http2=False, transport=transport_ipv4_b, timeout=timeout_ms)
             ))
         except Exception as e:
             _logger.warning("Gemini httpx transport build failed (env-ipv4): %s", e)
@@ -268,7 +271,7 @@ class _GeminiProvider(_ProviderBase):
         # 3) Ignore env, default route, HTTP/1.1
         clients.append((
             "noenv-default-h1",
-            httpx.Client(trust_env=False, http2=False, timeout=self.timeout)
+            httpx.Client(trust_env=False, http2=False, timeout=timeout_ms)
         ))
 
         last_exc = None
@@ -285,7 +288,7 @@ class _GeminiProvider(_ProviderBase):
                 client = genai.Client(
                     api_key=self.api_key or None,
                     http_options=types.HttpOptions(
-                        timeout=self.timeout,
+                        timeout=timeout_ms,
                         httpx_client=hclient,  # SDK uses this httpx client for all calls
                     ),
                 )
