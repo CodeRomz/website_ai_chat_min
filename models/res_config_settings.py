@@ -3,7 +3,8 @@ from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessD
 import logging
 _logger = logging.getLogger(__name__)
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import time
 import os
 
