@@ -224,50 +224,90 @@ class _GeminiProvider(_ProviderBase):
         except Exception:
             return "The Gemini client library is not installed on the server."
 
-        try:
-            # Configure HTTP time‑outs and disable proxies via client_args.
-            http_options = types.HttpOptions(
-                timeout=self.timeout,  # milliseconds; applies to all requests
-                client_args={
-                    "trust_env": False,  # ignore HTTP(S)_PROXY, etc.
-                    # Optional: fine‑grained time‑outs per phase if desired
-                    # "timeout": httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
-                },
-            )
-
-            client = genai.Client(
-                api_key=self.api_key or None,
-                http_options=http_options,
-            )
-
-            # Build the tools list only when a file‑search store is provided.
-            tools = None
-            if self.file_search_store:
-                tools = [
-                    types.Tool(
-                        file_search=types.FileSearch(
-                            file_search_store_names=[self.file_search_store]
-                        )
+        # Build tools/config once
+        tools = None
+        if self.file_search_store:
+            tools = [
+                types.Tool(
+                    file_search=types.FileSearch(
+                        file_search_store_names=[self.file_search_store]
                     )
-                ]
+                )
+            ]
+        cfg = types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+            tools=tools,
+            system_instruction=system_text or "",
+        )
 
-            config = types.GenerateContentConfig(
-                temperature=self.temperature,
-                max_output_tokens=self.max_tokens,
-                tools=tools,
-                system_instruction=system_text or "",
-            )
+        # Three httpx clients to try in order:
+        clients = []
 
-            response = client.models.generate_content(
-                model=self.model,
-                contents=user_text,
-                config=config,
-            )
-            # Extract and trim the response text.
-            return response.text.strip() if response.text else ""
-        except Exception as exc:
-            # Return a user‑friendly error message on failure.
-            return f"Error during Gemini request: {exc}"
+        # 1) Ignore env proxies/CA, force IPv4, HTTP/1.1
+        try:
+            transport_ipv4 = httpx.HTTPTransport(local_address="0.0.0.0")  # force IPv4
+            clients.append((
+                "noenv-ipv4-h1",
+                httpx.Client(trust_env=False, http2=False, transport=transport_ipv4, timeout=self.timeout)
+            # ignore env
+            ))
+        except Exception as e:
+            _logger.warning("Gemini httpx transport build failed (ipv4): %s", e)
+
+        # 2) Respect env proxies (if corp proxy is required), still IPv4, HTTP/1.1
+        try:
+            transport_ipv4_b = httpx.HTTPTransport(local_address="0.0.0.0")
+            clients.append((
+                "env-ipv4-h1",
+                httpx.Client(trust_env=True, http2=False, transport=transport_ipv4_b, timeout=self.timeout)
+            ))
+        except Exception as e:
+            _logger.warning("Gemini httpx transport build failed (env-ipv4): %s", e)
+
+        # 3) Ignore env, default route, HTTP/1.1
+        clients.append((
+            "noenv-default-h1",
+            httpx.Client(trust_env=False, http2=False, timeout=self.timeout)
+        ))
+
+        last_exc = None
+        for label, hclient in clients:
+            try:
+                # Optional preflight to surface handshake issues with exactly this client
+                try:
+                    hclient.head("https://generativelanguage.googleapis.com",
+                                 timeout=10)  # 404 is fine; handshake must complete
+                except Exception as pre:
+                    _logger.warning("Gemini preflight (%s) failed: %s", label, pre)
+                    raise
+
+                client = genai.Client(
+                    api_key=self.api_key or None,
+                    http_options=types.HttpOptions(
+                        timeout=self.timeout,
+                        httpx_client=hclient,  # SDK uses this httpx client for all calls
+                    ),
+                )
+
+                r = client.models.generate_content(
+                    model=self.model,
+                    contents=user_text,
+                    config=cfg,
+                )
+                return (getattr(r, "text", None) or "").strip()
+
+            except Exception as e:
+                last_exc = e
+                _logger.error("Gemini attempt %s failed: %s", label, e, exc_info=True)
+            finally:
+                try:
+                    hclient.close()
+                except Exception:
+                    pass
+
+        # If all attempts failed, return a clear message for the UI
+        return f"Error during Gemini request: {last_exc}"
 
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
