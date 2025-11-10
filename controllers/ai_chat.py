@@ -217,35 +217,30 @@ class _GeminiProvider(_ProviderBase):
 
     def ask(self, system_text: str, user_text: str) -> str:
         try:
-            # New Google GenAI SDK
             from google import genai
             from google.genai import types
+            try:
+                import httpx  # <-- add this import
+                _httpx_client = httpx.Client(trust_env=False)  # ignore env proxies
+            except Exception as e:
+                _httpx_client = None
+                _logger.warning("httpx unavailable; proceeding without custom httpx_client: %s", e)
         except Exception:
             return "The Gemini client library is not installed on the server."
 
-        # Configure the GenAI client with a request timeout via HttpOptions.
-        # In newer versions of the SDK the `generate_content` method does not
-        # accept a `request_options` keyword argument.  Instead, use
-        # `http_options` at client construction time to set the timeout.
         client = genai.Client(
             api_key=self.api_key or None,
             http_options=types.HttpOptions(
                 timeout=self.timeout,
-                # Ignore HTTP(S)_PROXY and friends; talk direct:
-                httpx_client=httpx.Client(trust_env=False),  # <— key line
+                httpx_client=_httpx_client,  # will be None if import failed
             ),
         )
 
-        # Attach File Search only when a store name is configured
         tools = None
         if self.file_search_store:
-            tools = [
-                types.Tool(
-                    file_search=types.FileSearch(
-                        file_search_store_names=[self.file_search_store]
-                    )
-                )
-            ]
+            tools = [types.Tool(file_search=types.FileSearch(
+                file_search_store_names=[self.file_search_store]
+            ))]
 
         cfg = types.GenerateContentConfig(
             temperature=self.temperature,
@@ -254,8 +249,6 @@ class _GeminiProvider(_ProviderBase):
             system_instruction=system_text or "",
         )
 
-        # NOTE: newer SDKs no longer support the `request_options` keyword.
-        # The timeout is configured via the client’s http_options above.
         r = client.models.generate_content(
             model=self.model,
             contents=user_text,
