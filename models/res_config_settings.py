@@ -3,6 +3,10 @@ from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessD
 import logging
 _logger = logging.getLogger(__name__)
 
+from google.generativeai import genai
+from google import types
+import time
+
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
@@ -93,13 +97,23 @@ class ResConfigSettings(models.TransientModel):
         ),
         default=False,
     )
+
     file_search_store = fields.Char(
         string="File Search Store Name",
         config_parameter='website_ai_chat_min.file_search_store',
         help=(
             "The fully-qualified FileSearchStore resource name (e.g., "
-            "'fileSearchStores/my-store').  This store must be created and loaded "
+            "'fileSearchStoresName').  This store must be created and loaded "
             "with your documents via the Gemini API."
+        ),
+        size=256,
+    )
+
+    file_search_index = fields.Char(
+        string="File Search Index File",
+        config_parameter='website_ai_chat_min.file_search_index',
+        help=(
+            "Index file where the gemini file search will initialize first."
         ),
         size=256,
     )
@@ -110,3 +124,22 @@ class ResConfigSettings(models.TransientModel):
             path = (rec.docs_folder or '').strip()
             if path and ('..' in path or path.startswith('~')):
                 raise ValidationError(_("Invalid docs folder path."))
+
+    def _file_search_index_sync(self):
+        client = genai.Client()
+
+        # Create the file search store with an optional display name
+        file_search_store = client.file_search_stores.create(config={'display_name': self.file_search_store})
+
+        # Upload and import a file into the file search store, supply a file name which will be visible in citations
+        operation = client.file_search_stores.upload_to_file_search_store(
+            file=self.file_search_index,
+            file_search_store_name=file_search_store.name,
+            config={
+                'display_name': self.file_search_store,
+            }
+        )
+
+
+
+
