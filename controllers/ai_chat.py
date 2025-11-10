@@ -211,71 +211,56 @@ class _OpenAIProvider(_ProviderBase):
 
 
 class _GeminiProvider(_ProviderBase):
-    def __init__(self, *a, file_search_store: str = "", **kw):
-        super().__init__(*a, **kw)
+    def __init__(self, *args, file_search_store: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        # strip to avoid accidental whitespace in store names
         self.file_search_store = (file_search_store or "").strip()
 
     def ask(self, system_text: str, user_text: str) -> str:
         try:
-            # GenAI SDK + types
-            from google import genai
-            from google.genai import types
-            # httpx for low-level HTTP client control
-            import httpx
-        except Exception:
-            return "The Gemini client library is not installed on the server."
-
-        # Build an httpx client that:
-        # - ignores proxy/CA environment variables (trust_env=False)
-        # - forces IPv4 path (HTTPTransport(local_address='0.0.0.0'))
-        # - disables HTTP/2 (http2=False)
-        # - uses our configured timeout
-        try:
-            transport = httpx.HTTPTransport(local_address="0.0.0.0")
-            _httpx_client = httpx.Client(
-                trust_env=False,          # ignore HTTP(S)_PROXY, SSL_CERT_FILE, etc.
-                http2=False,              # avoid any HTTP/2 edge cases
-                transport=transport,      # force IPv4 path
-                timeout=self.timeout,     # socket + connect timeouts
+            # Configure HTTP time‑outs and disable proxies via client_args.
+            http_options = types.HttpOptions(
+                timeout=self.timeout,  # milliseconds; applies to all requests
+                client_args={
+                    "trust_env": False,  # ignore HTTP(S)_PROXY, etc.
+                    # Optional: fine‑grained time‑outs per phase if desired
+                    # "timeout": httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
+                },
             )
-        except Exception as e:
-            _logger.warning(
-                "Gemini: custom httpx client setup failed; falling back to defaults: %s",
-                e,
+
+            client = genai.Client(
+                api_key=self.api_key or None,
+                http_options=http_options,
             )
-            _httpx_client = None  # SDK will fall back to its default httpx client
 
-        client = genai.Client(
-            api_key=self.api_key or None,
-            http_options=types.HttpOptions(
-                timeout=self.timeout,     # SDK-level timeout
-                httpx_client=_httpx_client,
-            ),
-        )
-
-        tools = None
-        if self.file_search_store:
-            tools = [
-                types.Tool(
-                    file_search=types.FileSearch(
-                        file_search_store_names=[self.file_search_store]
+            # Build the tools list only when a file‑search store is provided.
+            tools = None
+            if self.file_search_store:
+                tools = [
+                    types.Tool(
+                        file_search=types.FileSearch(
+                            file_search_store_names=[self.file_search_store]
+                        )
                     )
-                )
-            ]
+                ]
 
-        cfg = types.GenerateContentConfig(
-            temperature=self.temperature,
-            max_output_tokens=self.max_tokens,
-            tools=tools,
-            system_instruction=system_text or "",
-        )
+            config = types.GenerateContentConfig(
+                temperature=self.temperature,
+                max_output_tokens=self.max_tokens,
+                tools=tools,
+                system_instruction=system_text or "",
+            )
 
-        r = client.models.generate_content(
-            model=self.model,
-            contents=user_text,
-            config=cfg,
-        )
-        return (getattr(r, "text", None) or "").strip()
+            response = client.models.generate_content(
+                model=self.model,
+                contents=user_text,
+                config=config,
+            )
+            # Extract and trim the response text.
+            return response.text.strip() if response.text else ""
+        except Exception as exc:
+            # Return a user‑friendly error message on failure.
+            return f"Error during Gemini request: {exc}"
 
 
 
