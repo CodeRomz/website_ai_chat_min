@@ -271,7 +271,7 @@ class _GeminiProvider(_ProviderBase):
 
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
-    if cfg["provider"] == "gemini":
+    if (cfg["provider"] or "").strip().lower() == "gemini":
         return _GeminiProvider(
             cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"],
             file_search_store=cfg.get("file_search_store", ""),
