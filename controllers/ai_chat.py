@@ -50,28 +50,6 @@ def _throttle() -> bool:
 def _icp():
     return request.env["ir.config_parameter"].sudo()
 
-def _int_icp(name: str, default: int) -> int:
-    try:
-        v = _get_icp_param(name, str(default))
-        return int(v)
-    except Exception:
-        return default
-
-
-def _float_icp(name: str, default: float) -> float:
-    try:
-        v = _get_icp_param(name, str(default))
-        return float(v)
-    except Exception:
-        return default
-
-
-def _bool_icp(name: str, default: bool) -> bool:
-    try:
-        v = (_get_icp_param(name, "1" if default else "0") or "").strip().lower()
-        return v in ("1", "true", "yes", "y", "on")
-    except Exception:
-        return default
 
 def _get_icp_param(name: str, default: str = "") -> str:
     try:
