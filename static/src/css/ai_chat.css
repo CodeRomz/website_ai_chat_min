@@ -86,7 +86,6 @@
   height: 480px;
   display: flex;
   flex-direction: column;
-  background: var(--ai-surface);
   color: var(--ai-text);
   border-radius: var(--ai-radius);
   box-shadow: var(--ai-elev);
