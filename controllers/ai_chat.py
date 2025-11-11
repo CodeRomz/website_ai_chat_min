@@ -98,7 +98,7 @@ def _get_store_from_icp() -> str:
     Prefer the dedicated file_store_id if present, else fallback to the older field.
     """
     s1 = _get_icp_param("website_ai_chat_min.file_store_id", "")
-    s2 = _get_icp_param("website_ai_chat_min.file_search_store", "")
+    s2 = _get_icp_param("website_ai_chat_min.file_store_id", "")
     return _normalize_store(s1 or s2)
 
 
@@ -213,10 +213,10 @@ class _OpenAIProvider(_ProviderBase):
 
 
 class _GeminiProvider(_ProviderBase):
-    def __init__(self, *args, file_search_store: str = "", **kwargs):
+    def __init__(self, *args, file_store_id: str = "", **kwargs):
         super().__init__(*args, **kwargs)
         # strip to avoid accidental whitespace in store names
-        self.file_search_store = (file_search_store or "").strip()
+        self.file_store_id = (file_store_id or "").strip()
 
     def ask(self, system_text: str, user_text: str) -> str:
         timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
@@ -229,11 +229,11 @@ class _GeminiProvider(_ProviderBase):
 
         # Build tools/config once
         tools = None
-        if self.file_search_store:
+        if self.file_store_id:
             tools = [
                 types.Tool(
                     file_search=types.FileSearch(
-                        file_search_store_names=[self.file_search_store]
+                        file_search_store_names=[self.file_store_id]
                     )
                 )
             ]
@@ -317,7 +317,7 @@ def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
     if (cfg["provider"] or "").strip().lower() == "gemini":
         return _GeminiProvider(
             cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"],
-            file_search_store=cfg.get("file_search_store", ""),
+            file_store_id=cfg.get("file_store_id", ""),
         )
     return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
 
@@ -337,8 +337,8 @@ def _get_ai_config() -> Dict[str, Any]:
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
 
     file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
-    # NEW: prefer file_store_id, fallback to file_search_store; normalize to fully-qualified form
-    normalized_store = _get_store_from_icp()
+    # NEW: prefer file_store_id, fallback to file_store_id; normalize to fully-qualified form
+    file_store_id = _normalize_store(_get_icp_param("website_ai_chat_min.file_store_id", ""))
 
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
@@ -355,7 +355,7 @@ def _get_ai_config() -> Dict[str, Any]:
         "system_prompt": system_prompt,
         "docs_folder": docs_folder,
         "file_search_enabled": file_search_enabled,
-        "file_search_store": normalized_store,  # <- fully-qualified store goes here
+        "file_store_id": file_store_id,  # <- fully-qualified store goes here
         "file_search_index": file_search_index,
         "allowed_regex": allowed_regex,
         "redact_pii": redact_pii,
@@ -435,7 +435,7 @@ class AiChatController(http.Controller):
             override_store = ""
 
         if override_store:
-            cfg["file_search_store"] = override_store
+            cfg["file_store_id"] = override_store
 
         # Respect allow-list (optional)
         if cfg["allowed_regex"] and not _match_allowed(cfg["allowed_regex"], q):
@@ -452,7 +452,7 @@ class AiChatController(http.Controller):
             ui.setdefault("ai_status", {
                 "provider": cfg["provider"],
                 "model": cfg["model"],
-                "store": cfg["file_search_store"] if cfg["file_search_enabled"] else None,
+                "store": cfg["file_store_id"] if cfg["file_search_enabled"] else None,
             })
             return {"ok": True, "reply": cached["reply"], "ui": ui}
 
@@ -460,8 +460,8 @@ class AiChatController(http.Controller):
         system_text = _build_system_preamble(cfg["system_prompt"], [])
 
         # If File Search isn't enabled, ensure we don't attach a store
-        effective_store = cfg["file_search_store"] if cfg["file_search_enabled"] else ""
-        cfg["file_search_store"] = effective_store
+        effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""
+        cfg["file_store_id"] = effective_store
 
         # Call provider
         provider = _get_provider(cfg)
