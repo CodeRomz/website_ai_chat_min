@@ -323,13 +323,13 @@ def _get_ai_config() -> Dict[str, Any]:
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
 
-    file_search_enabled = _bool_icp("website_ai_chat_min.file_search_enabled", False)
+    file_search_enabled = _get_icp_param("website_ai_chat_min.file_search_enabled", False)
     # NEW: prefer file_store_id, fallback to file_store_id; normalize to fully-qualified form
     file_store_id = _normalize_store(_get_icp_param("website_ai_chat_min.file_store_id", ""))
 
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
-    redact_pii = _bool_icp("website_ai_chat_min.redact_pii", False)
+    redact_pii = _get_icp_param("website_ai_chat_min.redact_pii", False)
 
     temperature = 0.3
     max_tokens = 1536
