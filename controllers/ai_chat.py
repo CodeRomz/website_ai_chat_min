@@ -81,7 +81,6 @@ def _bool_icp(name: str, default: bool) -> bool:
     except Exception:
         return default
 
-
 # -----------------------------------------------------------------------------
 # Store helpers (normalize + fetch from ICP)
 def _normalize_store(name: str) -> str:
@@ -91,16 +90,6 @@ def _normalize_store(name: str) -> str:
     """
     name = (name or "").strip()
     return name if (not name or name.startswith("fileSearchStores/")) else f"fileSearchStores/{name}"
-
-
-def _get_store_from_icp() -> str:
-    """
-    Prefer the dedicated file_store_id if present, else fallback to the older field.
-    """
-    s1 = _get_icp_param("website_ai_chat_min.file_store_id", "")
-    s2 = _get_icp_param("website_ai_chat_min.file_store_id", "")
-    return _normalize_store(s1 or s2)
-
 
 # -----------------------------------------------------------------------------
 # Allowed-scope regex (admin-controlled)
