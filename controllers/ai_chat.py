@@ -413,11 +413,6 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/can_load", type="json", auth="user", csrf=True, methods=["POST"])
     def can_load(self):
-        """
-        Determines whether the AI chat widget should be mounted for the current
-        user. Only users belonging to the 'Website AI Chat / User' or
-        'Website AI Chat / Admin' groups are allowed to see the chat bubble.
-        """
         try:
             user = request.env.user
             has_user_group = user.has_group('website_ai_chat_min.group_ai_chat_user')
@@ -430,13 +425,7 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/send", type="json", auth="user", csrf=True, methods=["POST"])
     def send(self, question=None):
-        """
-        Validates, composes prompt, calls provider with retries,
-        and returns a compact, structured reply.
 
-        Optional request override:
-          { "message": "...", "store": "fileSearchStores/xyz" }
-        """
         if not _throttle():
             return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
 
