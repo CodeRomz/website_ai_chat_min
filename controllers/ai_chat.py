@@ -132,7 +132,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
     if base:
         lines.append(base)
     else:
-        lines.append("Be concise and helpful. Use markdown when formatting lists or steps.")
+        lines.append("Be concise and helpful. Use markdown when formatting lists or steps. Your reply should be in human-readable format.")
     return "\n".join(lines)
 
 
