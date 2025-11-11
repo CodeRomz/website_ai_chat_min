@@ -13,15 +13,8 @@
               — <a t-att-href="privacy_url" target="_blank" rel="noopener">Privacy</a>
             </t>
           </div>
-          <!-- Not self-closing -->
-          <!--<div id="ai-chat-i18n"
-               data-title="AI Chat"
-               data-send="Send"
-               data-placeholder="Type your question…"
-               data-close="Close"></div>-->
         </section>
       </t>
     </template>
-
   </data>
 </odoo>
