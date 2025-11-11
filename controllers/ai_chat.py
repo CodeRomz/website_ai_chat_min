@@ -377,8 +377,6 @@ def _normalize_message_from_request(question_param: Optional[str] = None) -> str
         pass
     return ""
 
-
-
 # -----------------------------------------------------------------------------
 # Lightweight per-user memory in Odoo session (no DB changes)
 
@@ -439,9 +437,17 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/can_load", type="json", auth="user", csrf=True, methods=["POST"])
     def can_load(self):
-        """Login gate for mounting the widget; returns a minimal boolean."""
+        """
+        Determines whether the AI chat widget should be mounted for the current
+        user. Only users belonging to the 'Website AI Chat / User' or
+        'Website AI Chat / Admin' groups are allowed to see the chat bubble.
+        """
         try:
-            return {"show": True}
+            user = request.env.user
+            has_user_group = user.has_group('website_ai_chat_min.group_ai_chat_user')
+            has_admin_group = user.has_group('website_ai_chat_min.group_ai_chat_admin')
+            allowed = bool(has_user_group or has_admin_group)
+            return {"show": allowed}
         except Exception as e:
             _logger.error("can_load failed: %s", tools.ustr(e), exc_info=True)
             return {"show": False}
