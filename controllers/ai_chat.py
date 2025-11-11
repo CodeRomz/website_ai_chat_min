@@ -378,6 +378,61 @@ def _normalize_message_from_request(question_param: Optional[str] = None) -> str
     return ""
 
 
+
+# -----------------------------------------------------------------------------
+# Lightweight per-user memory in Odoo session (no DB changes)
+
+_SESSION_MEM_KEY = "ai_chat_history_v1"
+
+def _mem_bucket_key(cfg: Dict[str, Any]) -> str:
+    # isolate memory per provider/model/store
+    return f"{(cfg.get('provider') or '').strip()}::{(cfg.get('model') or '').strip()}::{(cfg.get('file_store_id') or '').strip()}"
+
+def _mem_load(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    sess = getattr(request, "session", None)
+    if not sess:
+        return []
+    bucket = sess.get(_SESSION_MEM_KEY) or {}
+    return list(bucket.get(_mem_bucket_key(cfg)) or [])
+
+def _mem_save(cfg: Dict[str, Any], history: List[Dict[str, Any]]) -> None:
+    sess = getattr(request, "session", None)
+    if not sess:
+        return
+    bucket = dict(sess.get(_SESSION_MEM_KEY) or {})
+    bucket[_mem_bucket_key(cfg)] = history
+    sess[_SESSION_MEM_KEY] = bucket
+    try:
+        sess.modified = True  # ensure persistence
+    except Exception:
+        pass
+
+def _mem_append(cfg: Dict[str, Any], role: str, text: str, max_msgs: int = 30, max_chars: int = 24000) -> None:
+    """Append a turn and trim for context window."""
+    h = _mem_load(cfg)
+    h.append({"role": role, "parts": [{"text": (text or "")[:8000]}]})
+    if len(h) > max_msgs:
+        h = h[-max_msgs:]
+    total = 0
+    trimmed = []
+    for m in reversed(h):
+        part = (m.get("parts") or [{}])[0].get("text") or ""
+        total += len(part)
+        trimmed.append(m)
+        if total >= max_chars:
+            break
+    _mem_save(cfg, list(reversed(trimmed)))
+
+def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, Any]]:
+    """Gemini has no 'system' role; include system preamble as first user part."""
+    contents: List[Dict[str, Any]] = []
+    if (system_text or "").strip():
+        contents.append({"role": "user", "parts": [{"text": system_text.strip()}]})
+    contents.extend(_mem_load(cfg))
+    return contents
+
+
+
 # -----------------------------------------------------------------------------
 # Controller
 class AiChatController(http.Controller):
@@ -422,7 +477,6 @@ class AiChatController(http.Controller):
                 override_store = _normalize_store((payload.get("store") or "").strip())
         except Exception:
             override_store = ""
-
         if override_store:
             cfg["file_store_id"] = override_store
 
@@ -436,7 +490,6 @@ class AiChatController(http.Controller):
         cache_key = outbound_q
         cached = _QA_CACHE.get(cache_key)
         if cached:
-            # decorate cached UI with current ai_status as a convenience
             ui = dict(cached["ui"])
             ui.setdefault("ai_status", {
                 "provider": cfg["provider"],
@@ -452,10 +505,20 @@ class AiChatController(http.Controller):
         effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""
         cfg["file_store_id"] = effective_store
 
-        # Call provider
+        # ── MEMORY: append user turn, build contents, call, append model turn ─────
         provider = _get_provider(cfg)
         try:
-            answer_text = provider.ask(system_text, outbound_q).strip()
+            # 1) remember the new user turn
+            _mem_append(cfg, "user", outbound_q)
+
+            # 2) compose multi-turn contents (system preamble + history)
+            contents = _mem_contents(cfg, system_text)
+
+            # 3) ask with the full contents (Gemini SDK accepts list-of-messages)
+            answer_text = provider.ask(system_text, contents).strip()
+
+            # 4) remember the model's reply
+            _mem_append(cfg, "model", answer_text)
         except Exception as e:
             _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
             return {"ok": False, "reply": _("Network or provider error. Please try again.")}
@@ -477,3 +540,4 @@ class AiChatController(http.Controller):
         # Cache and return
         _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
+
