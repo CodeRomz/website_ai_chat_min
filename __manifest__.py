@@ -5,7 +5,7 @@
     "category": "Website",
     "license": "LGPL-3",
     "author": "Romualdo Jr",
-    "website": "https://example.com",
+    "website": "https://github.com/CodeRomz",
     "application": True,
     "installable": True,
     "depends": ["base", "web", "website"],
