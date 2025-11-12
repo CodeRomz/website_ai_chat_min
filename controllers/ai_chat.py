@@ -443,16 +443,6 @@ class AiChatController(http.Controller):
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
         # Cache lookup (use redacted text as the key if redaction is enabled)
-        cache_key = outbound_q
-        cached = _QA_CACHE.get(cache_key)
-        if cached:
-            ui = dict(cached["ui"])
-            ui.setdefault("ai_status", {
-                "provider": cfg["provider"],
-                "model": cfg["model"],
-                "store": cfg["file_store_id"] if cfg["file_search_enabled"] else None,
-            })
-            return {"ok": True, "reply": cached["reply"], "ui": ui}
 
         # Compose system prompt
         system_text = _build_system_preamble(cfg["system_prompt"], [])
@@ -460,6 +450,18 @@ class AiChatController(http.Controller):
         # If File Search isn't enabled, ensure we don't attach a store
         effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""
         cfg["file_store_id"] = effective_store
+
+        # Cache lookup — include provider, model, and effective store
+        cache_key = f"{cfg['provider']}|{cfg['model']}|{cfg.get('file_store_id', '')}|{outbound_q}"
+        cached = _QA_CACHE.get(cache_key)
+        if cached:
+            ui = dict(cached["ui"])
+            ui.setdefault("ai_status", {
+                "provider": cfg["provider"],
+                "model": cfg["model"],
+                "store": cfg['file_store_id'] or None,
+            })
+            return {"ok": True, "reply": cached["reply"], "ui": ui}
 
         # ── MEMORY: append user turn, build contents, call, append model turn ─────
         provider = _get_provider(cfg)
