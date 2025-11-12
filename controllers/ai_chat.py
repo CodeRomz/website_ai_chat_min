@@ -411,7 +411,7 @@ class AiChatController(http.Controller):
     def send(self, question=None):
 
         if not _throttle():
-            return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
+            return {"ok": False, "reply": _("We’re catching up—please wait a second before sending more.")}
 
         # Extract payload
         q = _normalize_message_from_request(question_param=question)
@@ -476,7 +476,7 @@ class AiChatController(http.Controller):
             _mem_append(cfg, "model", answer_text)
         except Exception as e:
             _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
-            return {"ok": False, "reply": _("Network or provider error. Please try again.")}
+            return {"ok": False, "reply": _("Something went wrong with the connection. Let’s try that again.")}
 
         # Shape minimal UI (now includes ai_status so the frontend can show the active store)
         ui = {
@@ -494,5 +494,5 @@ class AiChatController(http.Controller):
 
         # Cache and return
         _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
-        return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
+        return {"ok": True, "reply": (ui["answer_md"] or _("(Hmm, nothing came back this time. Let’s give it another try.)")), "ui": ui}
 
