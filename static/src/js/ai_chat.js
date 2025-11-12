@@ -19,7 +19,10 @@
     { method = "GET", body = undefined, headers = {}, timeoutMs = 20000 } = {}
   ) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    theTimeout:
+    {
+      var t = setTimeout(() => ctrl.abort(), timeoutMs);
+    }
     const opts = {
       method,
       credentials: "same-origin",
@@ -77,16 +80,15 @@
   bubble.setAttribute("type", "button");
   bubble.setAttribute("aria-label", "CodeRomz");
 
-  // Use your logo instead of the emoji
+  // Logo in the bubble
   const icon = new Image();
-  icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
-  icon.alt = "";                // decorative (button already has aria-label)
-  icon.width = 45;              // bubble is 56x56
+  icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png";
+  icon.alt = "";
+  icon.width = 45;
   icon.height = 45;
   icon.decoding = "async";
   icon.style.display = "block";
   icon.style.pointerEvents = "none";
-  // graceful fallback if image fails to load
   icon.addEventListener("error", () => { bubble.textContent = "💬"; });
   bubble.appendChild(icon);
 
@@ -103,25 +105,26 @@
   const title = document.createElement("div");
   title.textContent = "Academy Ai";
 
-  // NEW: Maximize/Restore button (added)
+  // Maximize/Restore button
   const maxBtn = document.createElement("button");
   maxBtn.className = "ai-chat-min__max";
   maxBtn.setAttribute("type", "button");
   maxBtn.setAttribute("aria-label", "Maximize");
   maxBtn.title = "Maximize";
-  maxBtn.textContent = "⤢"; // maximize icon
+  maxBtn.textContent = "🗖";
 
+  // Close button
   const closeBtn = document.createElement("button");
   closeBtn.className = "ai-chat-min__close";
   closeBtn.setAttribute("type", "button");
   closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.textContent = "×";
+  closeBtn.textContent = "✕";
 
   header.appendChild(title);
-  header.appendChild(maxBtn);   // insert max before close
+  header.appendChild(maxBtn);
   header.appendChild(closeBtn);
 
-  // Body (messages list)
+  // Body (messages)
   const body = document.createElement("div");
   body.className = "ai-chat-min__body";
 
@@ -197,7 +200,7 @@
     body.scrollTop = body.scrollHeight;
   }
 
-  // ---- TOGGLE ----
+  // ---- OPEN/CLOSE ----
   bubble.addEventListener("click", () => {
     panel.hidden = !panel.hidden;
     if (!panel.hidden) input.focus();
@@ -206,15 +209,15 @@
     panel.hidden = true;
   });
 
-  // NEW: Maximize / Restore behavior (added)
+  // ---- Maximize / Restore ----
   maxBtn.addEventListener("click", () => {
     const isMax = panel.classList.toggle("is-max");
     if (isMax) {
-      maxBtn.textContent = "⤡";       // restore icon
+      maxBtn.textContent = "🗗";
       maxBtn.title = "Restore";
       maxBtn.setAttribute("aria-label", "Restore");
     } else {
-      maxBtn.textContent = "⤢";       // maximize icon
+      maxBtn.textContent = "🗖";
       maxBtn.title = "Maximize";
       maxBtn.setAttribute("aria-label", "Maximize");
     }

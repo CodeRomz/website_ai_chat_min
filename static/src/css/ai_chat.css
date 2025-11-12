@@ -7,36 +7,21 @@
 
   --ai-bg: #ffffff;
   --ai-surface: #ffffff;
-  --ai-soft: #f5f7f9;
-  --ai-text: #0f172a;
-  --ai-subtle: #6b7280;
-  --ai-border: rgba(2,6,23,.10);
+  --ai-soft: #0a0f1d; /* keep your dark theme body */
+  --ai-text: #e5e7eb;
+  --ai-subtle: #9ca3af;
+  --ai-border: rgba(255,255,255,.12);
 
-  --ai-user-bubble: rgba(var(--ai-accent-rgb), .12);
-  --ai-bot-bubble: #eef2f6;
+  --ai-user-bubble: rgba(var(--ai-accent-rgb), .16);
+  --ai-bot-bubble: rgba(255,255,255,.06);
 
-  --ai-elev: 0 16px 40px rgba(2,6,23,.18);
-  --ai-fab-shadow: 0 6px 18px rgba(2,6,23,.20);
+  --ai-elev: 0 16px 42px rgba(0,0,0,.45);
+  --ai-fab-shadow: 0 6px 18px rgba(255,255,255,.35);
   --ai-fab-pulse: 0 0 0 10px rgba(var(--ai-accent-rgb), .15);
   --ai-btn-shadow: 0 4px 14px rgba(var(--ai-accent-rgb), .30);
 
   --ai-radius: 12px;
   --ai-pill: 999px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ai-bg: #0b1020;
-    --ai-surface: #0d1222;
-    --ai-soft: #0a0f1d;
-    --ai-text: #e5e7eb;
-    --ai-subtle: #9ca3af;
-    --ai-border: rgba(255,255,255,.12);
-    --ai-user-bubble: rgba(var(--ai-accent-rgb), .16);
-    --ai-bot-bubble: rgba(255,255,255,.06);
-    --ai-elev: 0 16px 42px rgba(0,0,0,.45);
-    --ai-fab-shadow: 0 6px 18px rgba(255,255,255,.35);
-  }
 }
 
 /* Prefer reduced motion */
@@ -95,23 +80,35 @@
   border: 1px solid var(--ai-border);
 }
 
+/* === Maximized panel state (added) === */
+.ai-chat-min__panel.is-max {
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  border-radius: 10px;
+}
+
 /* ---------- Header ---------- */
+/* keep buttons together on the right */
 .ai-chat-min__header {
   display: flex;
   align-items: center;
-  justify-content: flex-start; /* keep items together */
+  justify-content: flex-start; /* was space-between */
   gap: 8px;
   padding: 12px 16px;
   background: var(--ai-accent-strong);
   color: #fff;
 }
+/* push everything after the title to the right edge */
+.ai-chat-min__header > :first-child { margin-right: auto; }
 
-/* push everything after the title to the far right */
-.ai-chat-min__header > :first-child {
-  margin-right: auto;
-}
-
-.ai-chat-min__close {
+.ai-chat-min__close,
+.ai-chat-min__max {
   appearance: none;
   border: 0;
   background: transparent;
@@ -120,49 +117,57 @@
   font-size: 20px; line-height: 1; opacity: .95;
   transition: opacity .12s ease, transform .12s ease;
 }
-.ai-chat-min__close:hover { opacity: 1; transform: translateY(-1px); }
-.ai-chat-min__close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
-
-/* === Maximize button (added) === */
-.ai-chat-min__max {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-  opacity: .95;
-  transition: opacity .12s ease, transform .12s ease;
-  margin-right: 6px; /* sits before the close button */
-}
-.ai-chat-min__max:hover { opacity: 1; transform: translateY(-1px); }
-.ai-chat-min__max:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
+.ai-chat-min__close:hover, .ai-chat-min__max:hover { opacity: 1; transform: translateY(-1px); }
+.ai-chat-min__close:focus-visible, .ai-chat-min__max:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
 
 /* ---------- Body ---------- */
+/* make rows vertical and allow right/left alignment via align-self */
 .ai-chat-min__body {
-  flex: 1;
+  display: flex;               /* NEW: flex column so bubbles can shrink-to-fit and align like LinkedIn */
+  flex-direction: column;
+  gap: 6px;
   padding: 12px;
   overflow: auto;
-  background: var(--ai-soft);
+  background: #0b1020; /* your dark background */
   scrollbar-width: thin;
   scrollbar-color: var(--ai-subtle) transparent;
 }
 .ai-chat-min__body::-webkit-scrollbar { width: 10px; }
 .ai-chat-min__body::-webkit-scrollbar-thumb { background: var(--ai-subtle); border-radius: 6px; }
 
+/* ---------- Message Bubbles (LinkedIn-like) ---------- */
+.ai-chat-min__msg {
+  display: inline-flex;        /* shrink to content */
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 16px;         /* rounder bubbles */
+  max-width: 78%;              /* never exceed this width */
+  width: -moz-fit-content;     /* Firefox */
+  width: fit-content;          /* others */
+  word-break: break-word;
+  overflow-wrap: anywhere;     /* long tokens wrap */
+  border: 1px solid var(--ai-border);
+  background: var(--ai-bot-bubble);
+}
+.ai-chat-min__msg.bot  { align-self: flex-start; } /* left */
+.ai-chat-min__msg.user {
+  align-self: flex-end;        /* right */
+  background: var(--ai-user-bubble);
+  text-align: left;            /* don't right-align text */
+}
+
 /* ---------- Footer ---------- */
 .ai-chat-min__footer {
   display: flex; gap: 8px; padding: 12px;
   border-top: 1px solid var(--ai-border);
-  background: var(--ai-surface);
+  background: #0b1020;
 }
 .ai-chat-min__footer input {
   flex: 1; min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--ai-border);
   border-radius: var(--ai-radius);
-  background: transparent;
+  background: #0d1222;
   color: var(--ai-text);
 }
 .ai-chat-min__footer input::placeholder { color: var(--ai-subtle); }
@@ -181,43 +186,27 @@
 .ai-chat-min__send:active { transform: translateY(0) scale(.98); }
 .ai-chat-min__send:disabled { opacity: .6; cursor: not-allowed; box-shadow: none; }
 
-/* ---------- Messages ---------- */
-.ai-chat-min__msg {
-  margin: 6px 0;
-  padding: 8px 10px;
-  border-radius: var(--ai-radius);
-  max-width: 82%;
-  word-wrap: break-word;
-  line-height: 1.35;
-  border: 1px solid var(--ai-border);
-}
-.ai-chat-min__msg.user { margin-left: auto; background: var(--ai-user-bubble); text-align: right; }
-.ai-chat-min__msg.bot  { margin-right: auto; background: var(--ai-bot-bubble); color: var(--ai-text); }
-
-/* ---------- Clamp / More ---------- */
-.ai-md { line-height: 1.35; white-space: pre-wrap; }
-
-/* --- AI chat: presentable bot message --- */
+/* ---------- Markdown ---------- */
+.ai-md { line-height: 1.35; white-space: pre-wrap; max-width: 100%; }
 .ai-box { display: block; }
-
 .ai-md ul, .ai-md ol { margin: 6px 0 0; padding-left: 1.1rem; }
 .ai-md li { margin: 2px 0; }
 .ai-md p { margin: 0.35rem 0; }
 .ai-md code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: var(--ai-soft);
+  background: rgba(255,255,255,.06);
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 12px;
 }
 
+/* ---------- Chips (optional UI) ---------- */
 .ai-citations { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 .ai-chip { font-size: .85em; padding: 4px 10px; border-radius: var(--ai-pill);
   background: rgba(var(--ai-accent-rgb), .12); color: rgb(var(--ai-accent-rgb));
   border: 1px solid rgba(var(--ai-accent-rgb), .35); }
 
 .ai-suggestions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-/* Suggestion chips shown for follow-up prompts */
 .ai-suggestions .ai-suggest {
   border: 1px solid var(--ai-border);
   border-radius: var(--ai-pill);
@@ -232,25 +221,10 @@
   transform: translateY(-1px);
 }
 
-/* === Maximized panel state (added) === */
-.ai-chat-min__panel.is-max {
-  top: 16px;
-  left: 16px;
-  right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  width: auto;
-  height: auto;
-  max-width: none;
-  max-height: none;
-  border-radius: 10px;
-}
-
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
-
-  /* Maximized on mobile */
   .ai-chat-min__panel.is-max {
     top: 8px; left: 4vw; right: 4vw;
     bottom: calc(8px + env(safe-area-inset-bottom));
