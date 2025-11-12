@@ -136,8 +136,7 @@ class _OpenAIProvider(_ProviderBase):
             return "The OpenAI client library is not installed on the server."
         openai.api_key = self.api_key
 
-        # use seconds
-        timeout_s = float(self.timeout if self.timeout > 0 else 60.0)
+        timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
 
         def _call() -> str:
             try:
@@ -149,10 +148,10 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    request_timeout=timeout_s,  # seconds
+                    request_timeout=timeout_ms,
                 )
-                txt = resp["choices"][0]["message"]["content"] or ""
-                return txt.strip()
+                txt = resp["choices"][0]["message"]["content"].strip()
+                return txt
             except AttributeError:
                 client = openai.OpenAI(api_key=self.api_key)
                 r = client.chat.completions.create(
@@ -163,100 +162,112 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    timeout=timeout_s,  # seconds
+                    timeout=timeout_ms,
                 )
                 return (r.choices[0].message.content or "").strip()
 
         return self._with_retries(_call)
 
-
-
 class _GeminiProvider(_ProviderBase):
     def __init__(self, *args, file_store_id: str = "", **kwargs):
         super().__init__(*args, **kwargs)
+        # strip to avoid accidental whitespace in store names
         self.file_store_id = (file_store_id or "").strip()
 
     def ask(self, system_text: str, user_text: str) -> str:
-        timeout_s = float(self.timeout if self.timeout > 0 else 30.0)
+        timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
         try:
             from google import genai
             from google.genai import types
-            import httpx, time
+            import httpx
         except Exception:
             return "The Gemini client library is not installed on the server."
 
-        fs_tools = None
+        # Build tools/config once
+        tools = None
         if self.file_store_id:
-            fs_tools = [types.Tool(file_search=types.FileSearch(
-                file_search_store_names=[self.file_store_id]
-            ))]
-
+            tools = [
+                types.Tool(
+                    file_search=types.FileSearch(
+                        file_search_store_names=[self.file_store_id]
+                    )
+                )
+            ]
         cfg = types.GenerateContentConfig(
             temperature=self.temperature,
             max_output_tokens=self.max_tokens,
-            tools=fs_tools,
+            tools=tools,
             system_instruction=system_text or "",
         )
 
-        # Build explicit per-phase timeouts (faster fail on bad routes)
-        httpx_timeout = httpx.Timeout(
-            connect=min(5.0, timeout_s),
-            read=min(15.0, timeout_s),
-            write=min(15.0, timeout_s),
-            pool=min(5.0, timeout_s),
-        )
 
+        # Three httpx clients to try in order:
         clients = []
-        # 1) Try PROXY-AWARE first (most corp/VPC setups need this)
-        clients.append(("env-default-h1", httpx.Client(trust_env=True, http2=False, timeout=httpx_timeout)))
-        # 2) Fallback: direct
-        clients.append(("noenv-default-h1", httpx.Client(trust_env=False, http2=False, timeout=httpx_timeout)))
-        # 3) Optional: direct with IPv4 bias as a last resort
+
+        # 1) Ignore env proxies/CA, force IPv4, HTTP/1.1
         try:
-            transport_ipv4 = httpx.HTTPTransport(local_address="0.0.0.0")
-            clients.append(("noenv-ipv4-h1", httpx.Client(trust_env=False, http2=False, transport=transport_ipv4,
-                                                          timeout=httpx_timeout)))
+            transport_ipv4 = httpx.HTTPTransport(local_address="0.0.0.0")  # force IPv4
+            clients.append((
+                "noenv-ipv4-h1",
+                httpx.Client(trust_env=False, http2=False, transport=transport_ipv4, timeout=timeout_ms)
+            # ignore env
+            ))
         except Exception as e:
-            _logger.warning("Gemini ipv4 transport not created: %s", e)
+            _logger.warning("Gemini httpx transport build failed (ipv4): %s", e)
+
+        # 2) Respect env proxies (if corp proxy is required), still IPv4, HTTP/1.1
+        try:
+            transport_ipv4_b = httpx.HTTPTransport(local_address="0.0.0.0")
+            clients.append((
+                "env-ipv4-h1",
+                httpx.Client(trust_env=True, http2=False, transport=transport_ipv4_b, timeout=timeout_ms)
+            ))
+        except Exception as e:
+            _logger.warning("Gemini httpx transport build failed (env-ipv4): %s", e)
+
+        # 3) Ignore env, default route, HTTP/1.1
+        clients.append((
+            "noenv-default-h1",
+            httpx.Client(trust_env=False, http2=False, timeout=timeout_ms)
+        ))
 
         last_exc = None
         for label, hclient in clients:
-            t0 = time.time()
             try:
-                # Preflight should NEVER block the attempt; log and continue.
+                # Optional preflight to surface handshake issues with exactly this client
                 try:
-                    hclient.get("https://generativelanguage.googleapis.com/robots.txt", timeout=5.0)
+                    hclient.head("https://generativelanguage.googleapis.com",
+                                 timeout=10)  # 404 is fine; handshake must complete
                 except Exception as pre:
-                    _logger.warning("Gemini preflight (%s) failed (continuing): %s", label, pre)
+                    _logger.warning("Gemini preflight (%s) failed: %s", label, pre)
+                    raise
 
                 client = genai.Client(
                     api_key=self.api_key or None,
                     http_options=types.HttpOptions(
-                        timeout=timeout_s,  # seconds
-                        httpx_client=hclient,
+                        timeout=timeout_ms,
+                        httpx_client=hclient,  # SDK uses this httpx client for all calls
                     ),
                 )
 
                 r = client.models.generate_content(
                     model=self.model,
-                    contents=user_text,  # SDK accepts list-of-messages
+                    contents=user_text,
                     config=cfg,
                 )
-                txt = (getattr(r, "text", None) or "").strip()
-                _logger.info("Gemini %s succeeded in %.1f s", label, time.time() - t0)
-                return txt
+                return (getattr(r, "text", None) or "").strip()
 
             except Exception as e:
                 last_exc = e
-                _logger.error("Gemini attempt %s failed in %.1f s: %s", label, time.time() - t0, e, exc_info=True)
+                _logger.error("Gemini attempt %s failed: %s", label, e, exc_info=True)
             finally:
                 try:
                     hclient.close()
                 except Exception:
                     pass
 
+        # If all attempts failed, return a clear message for the UI
         return f"Error during Gemini request: {last_exc}"
-
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
     if (cfg["provider"] or "").strip().lower() == "gemini":
@@ -382,45 +393,6 @@ def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, 
     return contents
 
 # -----------------------------------------------------------------------------
-# Friendly Error
-def _friendly_provider_error(exc):
-    user_msg = _("I’m having trouble reaching the AI service at the moment. Please try again in a minute.")
-    err_code, retry_after = "UNKNOWN", 60
-
-    msg = tools.ustr(exc or "")
-    low = msg.lower()
-
-    if "unavailable" in low or "overloaded" in low or "503" in msg:
-        return _("The AI is a bit busy right now. Please try again in a minute."), "SERVICE_UNAVAILABLE", 60
-    if "429" in msg or "rate limit" in low or "quota" in low or "resourceexhausted" in low:
-        return _("Too many requests. Please wait a few seconds and try again."), "RATE_LIMITED", 10
-    if "timeout" in low or "timed out" in low or "read timeout" in low:
-        return _("The AI took too long to respond. Let’s try that again."), "TIMEOUT", 0
-    if "connect error" in low or "connecttimeout" in low or "name or service not known" in low or "dns" in low:
-        return _("I can’t reach the AI service right now. Please try again shortly."), "NETWORK", 30
-
-    return user_msg, err_code, retry_after
-
-
-def _coerce_provider_error_text(text):
-    """
-    If the provider returned an error string as 'answer', convert it to a
-    friendly message. Return (friendly_text_or_None, err_code, retry_after).
-    """
-    t = tools.ustr(text or "")
-    low = t.lower()
-
-    if "unavailable" in low or "overloaded" in low or "503" in t:
-        return _("The AI is a bit busy right now. Please try again in a minute."), "SERVICE_UNAVAILABLE", 60
-    if "429" in t or "rate limit" in low or "quota" in low or "resourceexhausted" in low:
-        return _("Too many requests. Please wait a few seconds and try again."), "RATE_LIMITED", 10
-    if "timeout" in low or "timed out" in low:
-        return _("The AI took too long to respond. Let’s try that again."), "TIMEOUT", 0
-
-    return None, "", 0
-
-
-# -----------------------------------------------------------------------------
 # Controller
 class AiChatController(http.Controller):
 
@@ -440,7 +412,7 @@ class AiChatController(http.Controller):
     def send(self, question=None):
 
         if not _throttle():
-            return {"ok": False, "reply": _("We’re catching up—please wait a second before sending more.")}
+            return {"ok": False, "reply": _("Please wait a moment before sending another message.")}
 
         # Extract payload
         q = _normalize_message_from_request(question_param=question)
@@ -470,24 +442,24 @@ class AiChatController(http.Controller):
 
         outbound_q = _redact_pii(q) if cfg["redact_pii"] else q
 
-        # Compose system prompt
-        system_text = _build_system_preamble(cfg["system_prompt"], [])
-
-        # If File Search isn't enabled, ensure we don't attach a store
-        effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""
-        cfg["file_store_id"] = effective_store
-
-        # Cache lookup — include provider, model, and effective store
-        cache_key = f"{cfg['provider']}|{cfg['model']}|{cfg.get('file_store_id', '')}|{outbound_q}"
+        # Cache lookup (use redacted text as the key if redaction is enabled)
+        cache_key = outbound_q
         cached = _QA_CACHE.get(cache_key)
         if cached:
             ui = dict(cached["ui"])
             ui.setdefault("ai_status", {
                 "provider": cfg["provider"],
                 "model": cfg["model"],
-                "store": cfg['file_store_id'] or None,
+                "store": cfg["file_store_id"] if cfg["file_search_enabled"] else None,
             })
             return {"ok": True, "reply": cached["reply"], "ui": ui}
+
+        # Compose system prompt
+        system_text = _build_system_preamble(cfg["system_prompt"], [])
+
+        # If File Search isn't enabled, ensure we don't attach a store
+        effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""
+        cfg["file_store_id"] = effective_store
 
         # ── MEMORY: append user turn, build contents, call, append model turn ─────
         provider = _get_provider(cfg)
@@ -498,36 +470,14 @@ class AiChatController(http.Controller):
             # 2) compose multi-turn contents (system preamble + history)
             contents = _mem_contents(cfg, system_text)
 
-            # 3) ask with the full contents (Gemini/OpenAI adapter)
+            # 3) ask with the full contents (Gemini SDK accepts list-of-messages)
             answer_text = provider.ask(system_text, contents).strip()
 
+            # 4) remember the model's reply
+            _mem_append(cfg, "model", answer_text)
         except Exception as e:
-            # Log full detail for ops, but return a friendly message to the user
-            _logger.exception("AI provider failure: %s", tools.ustr(e))
-            user_msg, err_code, retry_after = _friendly_provider_error(e)
-            return {
-                "ok": False,
-                "reply": user_msg,
-                "ui": {"answer_md": user_msg},
-                "err_code": err_code,
-                "retry_after": retry_after,
-            }
-
-        # 4) Some provider adapters return error details as plain text.
-        #    Convert those to friendly UX and do NOT append to memory/cache.
-        friendly, err_code, retry_after = _coerce_provider_error_text(answer_text)
-        if friendly:
-            _logger.warning("Provider returned error-shaped text; suppressing raw output.")
-            return {
-                "ok": False,
-                "reply": friendly,
-                "ui": {"answer_md": friendly},
-                "err_code": err_code,
-                "retry_after": retry_after,
-            }
-
-        # 5) remember the model's reply only if it's a normal answer
-        _mem_append(cfg, "model", answer_text)
+            _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
+            return {"ok": False, "reply": _("Network or provider error. Please try again.")}
 
         # Shape minimal UI (now includes ai_status so the frontend can show the active store)
         ui = {
@@ -545,5 +495,5 @@ class AiChatController(http.Controller):
 
         # Cache and return
         _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
-        return {"ok": True, "reply": (ui["answer_md"] or _("(Hmm, nothing came back this time. Let’s give it another try.)")), "ui": ui}
+        return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
 
