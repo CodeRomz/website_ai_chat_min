@@ -88,7 +88,7 @@ class ResConfigSettings(models.TransientModel):
         help="API key for the selected provider.\nKeep secret.",
         size=512,
     )
-    system_prompt = fields.Text(
+    system_prompt = fields.Char(
         string="System Prompt",
         config_parameter="website_ai_chat_min.system_prompt",
         help="Optional system instructions prepended to every conversation.",
