@@ -99,12 +99,18 @@
 .ai-chat-min__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start; /* keep items together */
   gap: 8px;
   padding: 12px 16px;
   background: var(--ai-accent-strong);
   color: #fff;
 }
+
+/* push everything after the title to the far right */
+.ai-chat-min__header > :first-child {
+  margin-right: auto;
+}
+
 .ai-chat-min__close {
   appearance: none;
   border: 0;
