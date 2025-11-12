@@ -24,8 +24,8 @@
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="Ai Instruction" help="Optional instructions prepended to every conversation.">
-                        <field name="ai_instruction"/>
+                    <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
+                        <field name="system_prompt" widget="textarea"/>
                     </setting>
 
                     <setting string="Allowed Questions (regex)"
