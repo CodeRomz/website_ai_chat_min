@@ -131,6 +131,9 @@
   background: #0b1020; /* your dark background */
   scrollbar-width: thin;
   scrollbar-color: var(--ai-subtle) transparent;
+
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .ai-chat-min__body::-webkit-scrollbar { width: 10px; }
 .ai-chat-min__body::-webkit-scrollbar-thumb { background: var(--ai-subtle); border-radius: 6px; }
@@ -221,6 +224,15 @@
   transform: translateY(-1px);
 }
 
+/* Panel height */
+.ai-chat-min__panel {
+  height: 580px;          /* fixed default height */
+  background: #0b1020;    /* (from earlier) keep dark background */
+}
+
+
+
+
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
@@ -228,6 +240,8 @@
   .ai-chat-min__panel.is-max {
     top: 8px; left: 4vw; right: 4vw;
     bottom: calc(8px + env(safe-area-inset-bottom));
-    width: auto; height: auto;
+    width: auto; height: min(70vh, 580px);
   }
 }
+
+
