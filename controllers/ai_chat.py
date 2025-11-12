@@ -200,6 +200,7 @@ class _GeminiProvider(_ProviderBase):
             system_instruction=system_text or "",
         )
 
+
         # Three httpx clients to try in order:
         clients = []
 
