@@ -70,9 +70,9 @@
     }
   }
 
-  // ---- UI ELEMENTS (match ai_chat.css) ----
+  // ---- UI ELEMENTS (scoped to .waicm) ----
   const wrap = document.createElement("div");
-  wrap.className = "ai-chat-min__wrap";
+  wrap.className = "waicm"; // module root scope
 
   // Floating bubble
   const bubble = document.createElement("button");
@@ -160,31 +160,33 @@
   function appendBotUI(ui) {
     const msg = document.createElement("div");
     msg.className = "ai-chat-min__msg bot";
+
+    // namespaced markdown container
     const md = document.createElement("div");
-    md.className = "ai-md ai-box";
+    md.className = "waicm-md waicm-box";
     md.innerHTML = ui.answer_md || "";
     msg.appendChild(md);
 
-    // citations (optional)
+    // citations (optional) — namespaced classes
     if (Array.isArray(ui.citations) && ui.citations.length) {
       const c = document.createElement("div");
-      c.className = "ai-citations";
+      c.className = "waicm-citations";
       for (const tag of ui.citations.slice(0, 6)) {
         const chip = document.createElement("span");
-        chip.className = "ai-chip";
+        chip.className = "waicm-chip";
         chip.textContent = String(tag || "");
         c.appendChild(chip);
       }
       msg.appendChild(c);
     }
 
-    // suggestions (optional)
+    // suggestions (optional) — namespaced classes
     if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
       const s = document.createElement("div");
-      s.className = "ai-suggestions";
+      s.className = "waicm-suggestions";
       for (const sug of ui.suggestions.slice(0, 3)) {
         const pill = document.createElement("button");
-        pill.className = "ai-suggest";
+        pill.className = "waicm-suggest";
         pill.type = "button";
         pill.textContent = String(sug || "");
         pill.addEventListener("click", () => {
