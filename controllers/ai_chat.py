@@ -95,10 +95,10 @@ def _redact_pii(text: str) -> str:
 
 # -----------------------------------------------------------------------------
 # Prompt composition
-def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, str]]) -> str:
+def _build_system_preamble(ai_instruction: str, snippets: List[Tuple[str, int, str]]) -> str:
     """Build the final system message (today: just the configured system prompt)."""
     lines: List[str] = []
-    base = (system_prompt or "").strip()
+    base = (ai_instruction or "").strip()
     if base:
         lines.append(base)
     else:
@@ -286,7 +286,7 @@ def _get_ai_config() -> Dict[str, Any]:
     provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
     model = _get_icp_param("website_ai_chat_min.ai_model", "")
-    system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
+    ai_instruction = _get_icp_param("website_ai_chat_min.ai_instruction", "")
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
 
     file_search_enabled = _get_icp_param("website_ai_chat_min.file_search_enabled", False)
@@ -304,7 +304,7 @@ def _get_ai_config() -> Dict[str, Any]:
         "provider": provider,
         "api_key": api_key,
         "model": model,
-        "system_prompt": system_prompt,
+        "ai_instruction": ai_instruction,
         "docs_folder": docs_folder,
         "file_search_enabled": file_search_enabled,
         "file_store_id": file_store_id,
@@ -454,7 +454,7 @@ class AiChatController(http.Controller):
             return {"ok": True, "reply": cached["reply"], "ui": ui}
 
         # Compose system prompt
-        system_text = _build_system_preamble(cfg["system_prompt"], [])
+        system_text = _build_system_preamble(cfg["ai_instruction"], [])
 
         # If File Search isn't enabled, ensure we don't attach a store
         effective_store = cfg["file_store_id"] if cfg["file_search_enabled"] else ""

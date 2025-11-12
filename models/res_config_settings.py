@@ -94,6 +94,13 @@ class ResConfigSettings(models.TransientModel):
         help="Optional system instructions prepended to every conversation.",
         size=4096,
     )
+
+    ai_instruction = fields.Text(
+        string="AI Instruction",
+        config_parameter="website_ai_chat_min.ai_instruction",
+        help="Optional system instructions prepended to every conversation.",
+        size=4096,
+    )
     allowed_regex = fields.Char(
         string="Allowed Questions (regex)",
         config_parameter="website_ai_chat_min.allowed_regex",
