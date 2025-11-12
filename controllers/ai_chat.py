@@ -302,7 +302,6 @@ def _get_ai_config() -> Dict[str, Any]:
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
 
     file_search_enabled = _get_icp_param("website_ai_chat_min.file_search_enabled", False)
-    # NEW: prefer file_store_id, fallback to file_store_id; normalize to fully-qualified form
     file_store_id = _normalize_store(_get_icp_param("website_ai_chat_min.file_store_id", ""))
 
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
@@ -320,7 +319,7 @@ def _get_ai_config() -> Dict[str, Any]:
         "system_prompt": system_prompt,
         "docs_folder": docs_folder,
         "file_search_enabled": file_search_enabled,
-        "file_store_id": file_store_id,  # <- fully-qualified store goes here
+        "file_store_id": file_store_id,
         "file_search_index": file_search_index,
         "allowed_regex": allowed_regex,
         "redact_pii": redact_pii,
@@ -398,7 +397,7 @@ def _mem_append(cfg: Dict[str, Any], role: str, text: str, max_msgs: int = 30, m
     _mem_save(cfg, list(reversed(trimmed)))
 
 def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, Any]]:
-    """Gemini has no 'system' role; include system preamble as first user part."""
+    """AI has no 'system' role; include system preamble as first user part."""
     contents: List[Dict[str, Any]] = []
     if (system_text or "").strip():
         contents.append({"role": "user", "parts": [{"text": system_text.strip()}]})
