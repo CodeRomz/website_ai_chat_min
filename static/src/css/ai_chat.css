@@ -224,14 +224,6 @@
   transform: translateY(-1px);
 }
 
-/* Panel height */
-.ai-chat-min__panel {
-  height: 580px;          /* fixed default height */
-  background: #0b1020;    /* (from earlier) keep dark background */
-}
-
-
-
 
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
@@ -240,7 +232,7 @@
   .ai-chat-min__panel.is-max {
     top: 8px; left: 4vw; right: 4vw;
     bottom: calc(8px + env(safe-area-inset-bottom));
-    width: auto; height: min(70vh, 580px);
+    width: auto; height: auto;
   }
 }
 
