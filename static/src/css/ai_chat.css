@@ -1,4 +1,5 @@
 /* ---------- Brand & Tokens ---------- */
+
 :root {
   --ai-accent: #47a5ae;
   --ai-accent-rgb: 71,165,174;
@@ -21,11 +22,6 @@
 
   --ai-radius: 12px;
   --ai-pill: 999px;
-
-  /* NEW: panel sizing tokens */
-  --ai-panel-w: 420px;      /* default width (you can tweak) */
-  --ai-panel-h: 620px;      /* default height (you can tweak) */
-  --ai-panel-inset: 16px;   /* margin when maximized */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -85,9 +81,9 @@
   position: fixed;
   right: 20px;
   bottom: calc(88px + env(safe-area-inset-bottom));
-  width: var(--ai-panel-w);     /* was 360px */
+  width: 360px;
   max-width: calc(100vw - 40px);
-  height: var(--ai-panel-h);    /* was 480px */
+  height: 580px;
   display: flex;
   flex-direction: column;
   color: var(--ai-text);
@@ -95,21 +91,8 @@
   box-shadow: var(--ai-elev);
   overflow: hidden;
   transform-origin: bottom right;
-  transition: opacity .14s ease, transform .14s ease, inset .14s ease, width .14s ease, height .14s ease, border-radius .14s ease;
+  transition: opacity .14s ease, transform .14s ease;
   border: 1px solid var(--ai-border);
-}
-
-/* NEW: Maximized state */
-.ai-chat-min__panel.is-max {
-  top: var(--ai-panel-inset);
-  bottom: calc(var(--ai-panel-inset) + env(safe-area-inset-bottom));
-  right: var(--ai-panel-inset);
-  left: var(--ai-panel-inset);
-  width: auto;
-  height: auto;
-  max-width: none;
-  max-height: none;
-  border-radius: 10px;
 }
 
 /* ---------- Header ---------- */
@@ -122,23 +105,16 @@
   background: var(--ai-accent-strong);
   color: #fff;
 }
-
-/* Action buttons (maximize + close) */
-.ai-chat-min__max,
 .ai-chat-min__close {
   appearance: none;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
-  opacity: .95;
+  font-size: 20px; line-height: 1; opacity: .95;
   transition: opacity .12s ease, transform .12s ease;
 }
-.ai-chat-min__max:hover,
 .ai-chat-min__close:hover { opacity: 1; transform: translateY(-1px); }
-.ai-chat-min__max:focus-visible,
 .ai-chat-min__close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
 
 /* ---------- Body ---------- */
@@ -219,6 +195,7 @@
   border: 1px solid rgba(var(--ai-accent-rgb), .35); }
 
 .ai-suggestions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+/* Suggestion chips shown for follow-up prompts */
 .ai-suggestions .ai-suggest {
   border: 1px solid var(--ai-border);
   border-radius: var(--ai-pill);
@@ -233,9 +210,11 @@
   transform: translateY(-1px);
 }
 
+/* ---------- Toggle pills & docs-only banner ---------- */
+/* Container for the AI Assist / Docs Only pills */
+
 /* ---------- Mobile ---------- */
 @media (max-width: 480px) {
   .ai-chat-min__panel { right: 4vw; width: 92vw; bottom: calc(88px + env(safe-area-inset-bottom)); height: min(70vh, 520px); }
-  .ai-chat-min__panel.is-max { left: 4vw; right: 4vw; top: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: auto; height: auto; }
   .ai-chat-min__bubble { width: 56px; height: 56px; font-size: 22px; }
 }
