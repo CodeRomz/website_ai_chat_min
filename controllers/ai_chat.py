@@ -172,6 +172,10 @@ class _OpenAIProvider(_ProviderBase):
 
 
 class _GeminiProvider(_ProviderBase):
+    def __init__(self, *args, file_store_id: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.file_store_id = (file_store_id or "").strip()
+
     def ask(self, system_text: str, user_text: str) -> str:
         timeout_s = float(self.timeout if self.timeout > 0 else 30.0)
         try:
