@@ -19,8 +19,8 @@ _QA_CACHE: Dict[str, Dict[str, object]] = {}
 # -----------------------------------------------------------------------------
 # In-memory rate limit (per IP)
 _RATE_BUCKETS: Dict[str, List[float]] = {}
-RATE_WINDOW_SECS = 15
-RATE_MAX_CALLS = 4
+RATE_WINDOW_SECS = 5
+RATE_MAX_CALLS = 1
 
 def _client_ip() -> str:
     try:
