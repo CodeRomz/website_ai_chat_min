@@ -3,8 +3,6 @@
   // Unwrap Odoo JSON-RPC envelopes
   const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
 
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-
   function getCookie(name) {
     const v = document.cookie.split("; ").find(r => r.startsWith(name + "="));
     return v ? decodeURIComponent(v.split("=")[1]) : "";

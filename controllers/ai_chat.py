@@ -392,6 +392,47 @@ def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, 
     return contents
 
 # -----------------------------------------------------------------------------
+# Friendly Error
+def _friendly_provider_error(exc):
+    """Map noisy provider exceptions to end-user friendly text."""
+    # Default
+    user_msg = _("I’m having trouble reaching the AI service at the moment. Please try again in a minute.")
+    err_code, retry_after = "UNKNOWN", 60
+
+    msg = tools.ustr(exc or "")
+    low = msg.lower()
+
+    # Common Gemini/OpenAI patterns
+    if "unavailable" in low or "overloaded" in low or " 503 " in msg:
+        return _("The AI is a bit busy right now. Please try again in a minute."), "SERVICE_UNAVAILABLE", 60
+    if "429" in msg or "rate limit" in low or "quota" in low or "resourceexhausted" in low:
+        return _("Too many requests. Please wait a few seconds and try again."), "RATE_LIMITED", 10
+    if "timeout" in low or "timed out" in low:
+        return _("The AI took too long to respond. Let’s try that again."), "TIMEOUT", 0
+
+    return user_msg, err_code, retry_after
+
+
+def _coerce_provider_error_text(text):
+    """
+    If the provider returned an error string as 'answer', convert it to a
+    friendly message. Return (friendly_text_or_None, err_code, retry_after).
+    """
+    t = tools.ustr(text or "")
+    low = t.lower()
+
+    # Examples that showed up in your UI:
+    # "Error during Gemini request: 503 UNAVAILABLE. {... 'message': 'The model is overloaded' ...}"
+    if "unavailable" in low or "overloaded" in low or " 503 " in t:
+        return _("The AI is a bit busy right now. Please try again in a minute."), "SERVICE_UNAVAILABLE", 60
+    if "429" in t or "rate limit" in low or "quota" in low or "resourceexhausted" in low:
+        return _("Too many requests. Please wait a few seconds and try again."), "RATE_LIMITED", 10
+    if "timeout" in low or "timed out" in low:
+        return _("The AI took too long to respond. Let’s try that again."), "TIMEOUT", 0
+
+    return None, "", 0
+
+# -----------------------------------------------------------------------------
 # Controller
 class AiChatController(http.Controller):
 
@@ -469,14 +510,36 @@ class AiChatController(http.Controller):
             # 2) compose multi-turn contents (system preamble + history)
             contents = _mem_contents(cfg, system_text)
 
-            # 3) ask with the full contents (Gemini SDK accepts list-of-messages)
+            # 3) ask with the full contents (Gemini/OpenAI adapter)
             answer_text = provider.ask(system_text, contents).strip()
 
-            # 4) remember the model's reply
-            _mem_append(cfg, "model", answer_text)
         except Exception as e:
-            _logger.error("provider call failed: %s", tools.ustr(e), exc_info=True)
-            return {"ok": False, "reply": _("Something went wrong with the connection. Let’s try that again.")}
+            # Log full detail for ops, but return a friendly message to the user
+            _logger.exception("AI provider failure: %s", tools.ustr(e))
+            user_msg, err_code, retry_after = _friendly_provider_error(e)
+            return {
+                "ok": False,
+                "reply": user_msg,
+                "ui": {"answer_md": user_msg},
+                "err_code": err_code,
+                "retry_after": retry_after,
+            }
+
+        # 4) Some provider adapters return error details as plain text.
+        #    Convert those to friendly UX and do NOT append to memory/cache.
+        friendly, err_code, retry_after = _coerce_provider_error_text(answer_text)
+        if friendly:
+            _logger.warning("Provider returned error-shaped text; suppressing raw output.")
+            return {
+                "ok": False,
+                "reply": friendly,
+                "ui": {"answer_md": friendly},
+                "err_code": err_code,
+                "retry_after": retry_after,
+            }
+
+        # 5) remember the model's reply only if it's a normal answer
+        _mem_append(cfg, "model", answer_text)
 
         # Shape minimal UI (now includes ai_status so the frontend can show the active store)
         ui = {

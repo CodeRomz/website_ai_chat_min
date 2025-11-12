@@ -175,10 +175,6 @@
 /* ---------- Clamp / More ---------- */
 .ai-md { line-height: 1.35; white-space: pre-wrap; }
 
-@media (prefers-color-scheme: dark) {
-  .ai-more { background: linear-gradient(transparent, rgba(255,255,255,.06)); }
-}
-
 /* --- AI chat: presentable bot message --- */
 .ai-box { display: block; }
 
