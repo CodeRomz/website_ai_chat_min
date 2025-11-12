@@ -25,7 +25,7 @@
                     </setting>
 
                     <setting string="System Prompt" help="Optional instructions prepended to every conversation.">
-                        <field name="system_prompt" widget="textarea"/>
+                        <field name="system_prompt"/>
                     </setting>
 
                     <setting string="Allowed Questions (regex)"
