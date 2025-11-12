@@ -77,19 +77,18 @@
   bubble.setAttribute("type", "button");
   bubble.setAttribute("aria-label", "CodeRomz");
 
-      // Use your logo instead of the emoji
-    const icon = new Image();
-    icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
-    icon.alt = "";                // decorative (button already has aria-label)
-    icon.width = 45;              // bubble is 56x56
-    icon.height = 45;
-    icon.decoding = "async";
-    icon.style.display = "block";
-    icon.style.pointerEvents = "none";
-    // graceful fallback if image fails to load
-    icon.addEventListener("error", () => { bubble.textContent = "💬"; });
-    bubble.appendChild(icon);
-
+  // Use your logo instead of the emoji
+  const icon = new Image();
+  icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
+  icon.alt = "";                // decorative (button already has aria-label)
+  icon.width = 45;              // bubble is 56x56
+  icon.height = 45;
+  icon.decoding = "async";
+  icon.style.display = "block";
+  icon.style.pointerEvents = "none";
+  // graceful fallback if image fails to load
+  icon.addEventListener("error", () => { bubble.textContent = "💬"; });
+  bubble.appendChild(icon);
 
   // Panel
   const panel = document.createElement("div");
@@ -103,12 +102,23 @@
   header.className = "ai-chat-min__header";
   const title = document.createElement("div");
   title.textContent = "Academy Ai";
+
+  // NEW: Maximize/Restore button (added)
+  const maxBtn = document.createElement("button");
+  maxBtn.className = "ai-chat-min__max";
+  maxBtn.setAttribute("type", "button");
+  maxBtn.setAttribute("aria-label", "Maximize");
+  maxBtn.title = "Maximize";
+  maxBtn.textContent = "⤢"; // maximize icon
+
   const closeBtn = document.createElement("button");
   closeBtn.className = "ai-chat-min__close";
   closeBtn.setAttribute("type", "button");
   closeBtn.setAttribute("aria-label", "Close");
   closeBtn.textContent = "×";
+
   header.appendChild(title);
+  header.appendChild(maxBtn);   // insert max before close
   header.appendChild(closeBtn);
 
   // Body (messages list)
@@ -194,6 +204,20 @@
   });
   closeBtn.addEventListener("click", () => {
     panel.hidden = true;
+  });
+
+  // NEW: Maximize / Restore behavior (added)
+  maxBtn.addEventListener("click", () => {
+    const isMax = panel.classList.toggle("is-max");
+    if (isMax) {
+      maxBtn.textContent = "⤡";       // restore icon
+      maxBtn.title = "Restore";
+      maxBtn.setAttribute("aria-label", "Restore");
+    } else {
+      maxBtn.textContent = "⤢";       // maximize icon
+      maxBtn.title = "Maximize";
+      maxBtn.setAttribute("aria-label", "Maximize");
+    }
   });
 
   // ---- SEND FLOW ----
