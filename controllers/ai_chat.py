@@ -129,30 +129,15 @@ class _ProviderBase:
         raise last or RuntimeError("provider failed")
 
 class _OpenAIProvider(_ProviderBase):
-    def ask(self, system_text: str, user_text) -> str:  # accept list or str
+    def ask(self, system_text: str, user_text: str) -> str:
         try:
             import openai
         except Exception:
             return "The OpenAI client library is not installed on the server."
         openai.api_key = self.api_key
 
+        # use seconds
         timeout_s = float(self.timeout if self.timeout > 0 else 60.0)
-
-        # ---- flatten list-of-messages into a single user string (see patch #3)
-        def _flatten_user_text(val):
-            if isinstance(val, str):
-                return val
-            out = []
-            try:
-                for m in val or []:
-                    part = (m.get("parts") or [{}])[0].get("text") or ""
-                    if part:
-                        out.append(f"{(m.get('role') or 'user').upper()}: {part}")
-            except Exception:
-                return tools.ustr(val)
-            return "\n\n".join(out) or ""
-        user_text = _flatten_user_text(user_text)
-        # ------------------------------------------------------------
 
         def _call() -> str:
             try:
@@ -164,9 +149,10 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    request_timeout=timeout_s,   # seconds
+                    request_timeout=timeout_s,  # seconds
                 )
-                return (resp["choices"][0]["message"]["content"] or "").strip()
+                txt = resp["choices"][0]["message"]["content"] or ""
+                return txt.strip()
             except AttributeError:
                 client = openai.OpenAI(api_key=self.api_key)
                 r = client.chat.completions.create(
@@ -177,24 +163,21 @@ class _OpenAIProvider(_ProviderBase):
                         {"role": "system", "content": system_text},
                         {"role": "user", "content": user_text},
                     ],
-                    timeout=timeout_s,          # seconds
+                    timeout=timeout_s,  # seconds
                 )
                 return (r.choices[0].message.content or "").strip()
 
         return self._with_retries(_call)
 
 
-class _GeminiProvider(_ProviderBase):
-    def __init__(self, *args, file_store_id: str = "", **kwargs):
-        super().__init__(*args, **kwargs)
-        self.file_store_id = (file_store_id or "").strip()
 
+class _GeminiProvider(_ProviderBase):
     def ask(self, system_text: str, user_text: str) -> str:
-        timeout_s = float(self.timeout if self.timeout > 0 else 60.0)
+        timeout_s = float(self.timeout if self.timeout > 0 else 30.0)
         try:
             from google import genai
             from google.genai import types
-            import httpx
+            import httpx, time
         except Exception:
             return "The Gemini client library is not installed on the server."
 
@@ -211,48 +194,57 @@ class _GeminiProvider(_ProviderBase):
             system_instruction=system_text or "",
         )
 
+        # Build explicit per-phase timeouts (faster fail on bad routes)
+        httpx_timeout = httpx.Timeout(
+            connect=min(5.0, timeout_s),
+            read=min(15.0, timeout_s),
+            write=min(15.0, timeout_s),
+            pool=min(5.0, timeout_s),
+        )
+
         clients = []
+        # 1) Try PROXY-AWARE first (most corp/VPC setups need this)
+        clients.append(("env-default-h1", httpx.Client(trust_env=True, http2=False, timeout=httpx_timeout)))
+        # 2) Fallback: direct
+        clients.append(("noenv-default-h1", httpx.Client(trust_env=False, http2=False, timeout=httpx_timeout)))
+        # 3) Optional: direct with IPv4 bias as a last resort
         try:
             transport_ipv4 = httpx.HTTPTransport(local_address="0.0.0.0")
-            clients.append(("noenv-ipv4-h1", httpx.Client(trust_env=False, http2=False, transport=transport_ipv4, timeout=timeout_s)))
+            clients.append(("noenv-ipv4-h1", httpx.Client(trust_env=False, http2=False, transport=transport_ipv4,
+                                                          timeout=httpx_timeout)))
         except Exception as e:
-            _logger.warning("Gemini httpx transport build failed (ipv4): %s", e)
-
-        try:
-            transport_ipv4_b = httpx.HTTPTransport(local_address="0.0.0.0")
-            clients.append(("env-ipv4-h1", httpx.Client(trust_env=True, http2=False, transport=transport_ipv4_b, timeout=timeout_s)))
-        except Exception as e:
-            _logger.warning("Gemini httpx transport build failed (env-ipv4): %s", e)
-
-        clients.append(("noenv-default-h1", httpx.Client(trust_env=False, http2=False, timeout=timeout_s)))
+            _logger.warning("Gemini ipv4 transport not created: %s", e)
 
         last_exc = None
         for label, hclient in clients:
+            t0 = time.time()
             try:
+                # Preflight should NEVER block the attempt; log and continue.
                 try:
-                    hclient.head("https://generativelanguage.googleapis.com", timeout=10)
+                    hclient.get("https://generativelanguage.googleapis.com/robots.txt", timeout=5.0)
                 except Exception as pre:
-                    _logger.warning("Gemini preflight (%s) failed: %s", label, pre)
-                    raise
+                    _logger.warning("Gemini preflight (%s) failed (continuing): %s", label, pre)
 
                 client = genai.Client(
                     api_key=self.api_key or None,
                     http_options=types.HttpOptions(
-                        timeout=timeout_s,     # seconds
+                        timeout=timeout_s,  # seconds
                         httpx_client=hclient,
                     ),
                 )
 
                 r = client.models.generate_content(
                     model=self.model,
-                    contents=user_text,
+                    contents=user_text,  # SDK accepts list-of-messages
                     config=cfg,
                 )
-                return (getattr(r, "text", None) or "").strip()
+                txt = (getattr(r, "text", None) or "").strip()
+                _logger.info("Gemini %s succeeded in %.1f s", label, time.time() - t0)
+                return txt
 
             except Exception as e:
                 last_exc = e
-                _logger.error("Gemini attempt %s failed: %s", label, e, exc_info=True)
+                _logger.error("Gemini attempt %s failed in %.1f s: %s", label, time.time() - t0, e, exc_info=True)
             finally:
                 try:
                     hclient.close()
@@ -388,7 +380,6 @@ def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, 
 # -----------------------------------------------------------------------------
 # Friendly Error
 def _friendly_provider_error(exc):
-    """Map noisy provider exceptions to end-user friendly text."""
     user_msg = _("I’m having trouble reaching the AI service at the moment. Please try again in a minute.")
     err_code, retry_after = "UNKNOWN", 60
 
@@ -399,8 +390,10 @@ def _friendly_provider_error(exc):
         return _("The AI is a bit busy right now. Please try again in a minute."), "SERVICE_UNAVAILABLE", 60
     if "429" in msg or "rate limit" in low or "quota" in low or "resourceexhausted" in low:
         return _("Too many requests. Please wait a few seconds and try again."), "RATE_LIMITED", 10
-    if "timeout" in low or "timed out" in low:
+    if "timeout" in low or "timed out" in low or "read timeout" in low:
         return _("The AI took too long to respond. Let’s try that again."), "TIMEOUT", 0
+    if "connect error" in low or "connecttimeout" in low or "name or service not known" in low or "dns" in low:
+        return _("I can’t reach the AI service right now. Please try again shortly."), "NETWORK", 30
 
     return user_msg, err_code, retry_after
 
