@@ -96,7 +96,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;    /* keep items together */
-  gap: 8px;
   height: 44px;                   /* fixed bar height */
   padding: 0 12px;                /* vertical size driven by height */
   background: var(--ai-accent-strong);
