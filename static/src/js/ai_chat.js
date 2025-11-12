@@ -77,19 +77,18 @@
   bubble.setAttribute("type", "button");
   bubble.setAttribute("aria-label", "CodeRomz");
 
-      // Use your logo instead of the emoji
-    const icon = new Image();
-    icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
-    icon.alt = "";                // decorative (button already has aria-label)
-    icon.width = 45;              // bubble is 56x56
-    icon.height = 45;
-    icon.decoding = "async";
-    icon.style.display = "block";
-    icon.style.pointerEvents = "none";
-    // graceful fallback if image fails to load
-    icon.addEventListener("error", () => { bubble.textContent = "💬"; });
-    bubble.appendChild(icon);
-
+  // Use your logo instead of the emoji
+  const icon = new Image();
+  icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png"; // update path/filename if needed
+  icon.alt = "";                // decorative (button already has aria-label)
+  icon.width = 45;              // bubble is 56x56
+  icon.height = 45;
+  icon.decoding = "async";
+  icon.style.display = "block";
+  icon.style.pointerEvents = "none";
+  // graceful fallback if image fails to load
+  icon.addEventListener("error", () => { bubble.textContent = "💬"; });
+  bubble.appendChild(icon);
 
   // Panel
   const panel = document.createElement("div");
@@ -103,12 +102,23 @@
   header.className = "ai-chat-min__header";
   const title = document.createElement("div");
   title.textContent = "Academy Ai";
+
+  // NEW: Maximize/Restore button
+  const maxBtn = document.createElement("button");
+  maxBtn.className = "ai-chat-min__max";
+  maxBtn.setAttribute("type", "button");
+  maxBtn.setAttribute("aria-label", "Maximize");
+  maxBtn.title = "Maximize";
+  maxBtn.textContent = "⤢"; // maximize icon
+
   const closeBtn = document.createElement("button");
   closeBtn.className = "ai-chat-min__close";
   closeBtn.setAttribute("type", "button");
   closeBtn.setAttribute("aria-label", "Close");
   closeBtn.textContent = "×";
+
   header.appendChild(title);
+  header.appendChild(maxBtn);   // insert max before close
   header.appendChild(closeBtn);
 
   // Body (messages list)
@@ -196,64 +206,16 @@
     panel.hidden = true;
   });
 
-  // ---- SEND FLOW ----
-  async function sendMsg() {
-    const q = (input.value || "").trim();
-    if (!q) return;
-    appendMessage("user", q);
-    input.value = "";
-    send.disabled = true;
+  // ---- NEW: Maximize / Restore logic ----
+  (function setupMaximize() {
+    const KEY = "ai-chat-min:maximized";
 
-    try {
-      const { ok, status, data } = await fetchJSON("/ai_chat/send", {
-        method: "POST",
-        body: { jsonrpc: "2.0", method: "call", params: { question: q } },
-        timeoutMs: 25000,
-      });
-
-      // If unauthorized (missing CSRF), hide UI gracefully
-      if (!ok && (status === 401 || status === 403)) {
-        panel.hidden = true;
-        bubble.style.display = "none";
-        return;
-      }
-
-      const raw = unwrap(data || {});
-      if (ok && raw && raw.ok) {
-        const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
-        const answerText = uiObj.answer_md || raw.reply || "";
-        const ui = {
-          title: uiObj.title || "",
-          summary: uiObj.summary || "",
-          answer_md: String(answerText || ""),
-          citations: Array.isArray(uiObj.citations) ? uiObj.citations : [],
-          suggestions: Array.isArray(uiObj.suggestions) ? uiObj.suggestions.slice(0, 3) : [],
-        };
-        appendBotUI(ui);
+    function apply(isMax) {
+      panel.classList.toggle("is-max", isMax);
+      maxBtn.setAttribute("aria-pressed", String(isMax));
+      if (isMax) {
+        maxBtn.textContent = "⤡"; // restore
+        maxBtn.title = "Restore";
+        maxBtn.setAttribute("aria-label", "Restore");
       } else {
-        appendMessage("bot", (raw && raw.reply) || "Network error.");
-      }
-    } catch (e) {
-      console.error("AI Chat: send failed", e);
-      appendMessage("bot", "Network error.");
-    } finally {
-      send.disabled = false;
-    }
-  }
-
-  send.addEventListener("click", sendMsg);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMsg();
-    }
-  });
-
-  // Mount
-  (async () => {
-    const { mount, show } = await canMount();
-    if (mount) {
-      wrap.style.display = show ? "block" : "none";
-    }
-  })();
-})();
+        maxBtn.textContent = "⤢"; // maximize
