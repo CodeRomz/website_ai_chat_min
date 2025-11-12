@@ -104,7 +104,6 @@
 /* title left, buttons pushed to the right */
 .ai-chat-min__header > :first-child {
   margin-right: auto;
-  font-weight: 600;
   line-height: 1;
 }
 
