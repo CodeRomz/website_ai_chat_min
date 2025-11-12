@@ -22,14 +22,12 @@ _RATE_BUCKETS: Dict[str, List[float]] = {}
 RATE_WINDOW_SECS = 15
 RATE_MAX_CALLS = 4
 
-
 def _client_ip() -> str:
     try:
         return request.httprequest.headers.get("X-Forwarded-For", "").split(",")[0].strip() or \
             request.httprequest.remote_addr or "0.0.0.0"
     except Exception:
         return "0.0.0.0"
-
 
 def _throttle() -> bool:
     """Token-bucket style throttle per client IP."""
@@ -44,12 +42,10 @@ def _throttle() -> bool:
     bucket.append(now)
     return True
 
-
 # -----------------------------------------------------------------------------
 # Config access
 def _icp():
     return request.env["ir.config_parameter"].sudo()
-
 
 def _get_icp_param(name: str, default: str = "") -> str:
     try:
@@ -84,9 +80,8 @@ def _match_allowed(pattern: str, text: str, timeout_ms: int = 120) -> bool:
     except Exception:
         return False
 
-
 # -----------------------------------------------------------------------------
-# Optional PII redaction
+# PII redaction
 def _redact_pii(text: str) -> str:
     try:
         if not text:
@@ -97,7 +92,6 @@ def _redact_pii(text: str) -> str:
         return text
     except Exception:
         return text
-
 
 # -----------------------------------------------------------------------------
 # Prompt composition
@@ -110,7 +104,6 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
     else:
         lines.append("Be concise and helpful. Use markdown when formatting lists or steps. Your reply should be in human-readable format.")
     return "\n\n".join(lines)
-
 
 # -----------------------------------------------------------------------------
 # Provider base + adapters (OpenAI / Gemini)
@@ -134,7 +127,6 @@ class _ProviderBase:
                 last = e
                 time.sleep(0.4)
         raise last or RuntimeError("provider failed")
-
 
 class _OpenAIProvider(_ProviderBase):
     def ask(self, system_text: str, user_text: str) -> str:
@@ -175,7 +167,6 @@ class _OpenAIProvider(_ProviderBase):
                 return (r.choices[0].message.content or "").strip()
 
         return self._with_retries(_call)
-
 
 class _GeminiProvider(_ProviderBase):
     def __init__(self, *args, file_store_id: str = "", **kwargs):
@@ -277,7 +268,6 @@ class _GeminiProvider(_ProviderBase):
         # If all attempts failed, return a clear message for the UI
         return f"Error during Gemini request: {last_exc}"
 
-
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
     if (cfg["provider"] or "").strip().lower() == "gemini":
         return _GeminiProvider(
@@ -286,13 +276,11 @@ def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
         )
     return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
 
-
 # -----------------------------------------------------------------------------
 # Config loader
 AI_DEFAULT_TIMEOUT = 15
 AI_DEFAULT_TEMPERATURE = 0.2
 AI_DEFAULT_MAX_TOKENS = 512
-
 
 def _get_ai_config() -> Dict[str, Any]:
     provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")
@@ -327,7 +315,6 @@ def _get_ai_config() -> Dict[str, Any]:
         "max_tokens": max_tokens,
         "timeout": timeout,
     }
-
 
 # -----------------------------------------------------------------------------
 # Request parsing (accepts {question} or JSON-RPC)
@@ -403,8 +390,6 @@ def _mem_contents(cfg: Dict[str, Any], system_text: str = "") -> List[Dict[str, 
         contents.append({"role": "user", "parts": [{"text": system_text.strip()}]})
     contents.extend(_mem_load(cfg))
     return contents
-
-
 
 # -----------------------------------------------------------------------------
 # Controller
