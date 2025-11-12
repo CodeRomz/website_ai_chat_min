@@ -78,7 +78,7 @@
                     <setting string="File Search Index File"
                              help="Index file where the gemini file search will initialize first.">
                         <field name="file_search_index"/>
-                        <button name="file_search_index_sync" string="Upload Document" type="object"  class="btn-success"/>
+                        <button name="file_search_upload" string="Upload Document" type="object"  class="btn-success"/>
                     </setting>
 
                 </block>

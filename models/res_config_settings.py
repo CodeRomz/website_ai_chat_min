@@ -212,12 +212,7 @@ class ResConfigSettings(models.TransientModel):
     # ---------------------------------------------------------------------
     # Admin button: Sync Index (create/reuse store, two-step upload → import)
     # ---------------------------------------------------------------------
-    def file_search_index_sync(self):
-        """
-        Upload exactly one file located at <docs_folder>/<file_search_index>
-        to Gemini File Search. Reuse store if present; otherwise create one.
-        Polls the indexing operation to completion and shows a toast.
-        """
+    def file_search_upload(self):
         self.ensure_one()
         ICP = self.env["ir.config_parameter"].sudo()
 
@@ -284,25 +279,17 @@ class ResConfigSettings(models.TransientModel):
         mime_type = _guess_mime(real_path)
         _logger.info("Gemini File Search: uploading %s (mime=%s) to store %s", real_path, mime_type, store_name)
 
-        # ---------------------------
-        # TWO-STEP FLOW (reliable):
-        # 1) Upload to Files API with explicit mime_type
-        # 2) Import that file into the File Search Store
-        # ---------------------------
         uploaded = client.files.upload(
             file=real_path,
             config={
-                "display_name": os.path.basename(real_path),  # human label shown in citations
-                "mime_type": mime_type,                       # force MIME (reliable)
+                "display_name": os.path.basename(real_path),
+                "mime_type": mime_type,
             },
         )
 
         op = client.file_search_stores.import_file(
             file_search_store_name=store_name,  # fully-qualified name
             file_name=uploaded.name,            # e.g. "files/abc123"
-            # You can add metadata/chunking if desired:
-            # custom_metadata=[{"key": "source", "string_value": os.path.basename(real_path)}],
-            # chunking_config={"white_space_config": {"max_tokens_per_chunk": 400, "max_overlap_tokens": 40}},
         )
 
         # Poll the LRO (max ~5 minutes)
