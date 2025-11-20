@@ -12,11 +12,11 @@
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-                    <setting string="AI Provider" help="Choose which LLM provider to call from the chat backend.">
-                        <field name="ai_provider"/>
+                    <setting string="AI Provider" help="Gemini is the only supported provider for this module.">
+                        <field name="ai_provider" readonly="1"/>
                     </setting>
 
-                    <setting string="Model" help="Exact model name supported by the selected provider.">
+                    <setting string="Model" help="Exact Gemini model identifier to use for chat responses.">
                         <field name="ai_model"/>
                     </setting>
 
@@ -62,16 +62,16 @@
 
                     <!-- NEW: Gemini File Search options -->
                     <setting string="Enable Gemini File Search"
-                             help="When using the Gemini provider, offload document retrieval to a FileSearchStore instead of scanning local documents.  Requires specifying the store name below.">
+                             help="Offload document retrieval to a Gemini FileSearchStore instead of scanning the local PDF folder. Requires the store fields below.">
                         <field name="file_search_enabled"/>
                     </setting>
-                    <setting string="File Store Display name"
-                             help="Fully-qualified FileSearchStore Human Friendly Name">
+                    <setting string="File Search Store Name"
+                             help="Human-friendly name returned by the FileSearchStore resource">
                         <field name="file_store_display_name"/>
                     </setting>
 
                     <setting string="File Store ID"
-                             help="File Store ID From Gemini ">
+                             help="File Search Store identifier from Gemini (e.g., fileSearchStores/123)">
                         <field name="file_store_id"/>
                     </setting>
 

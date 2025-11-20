@@ -19,8 +19,22 @@ _QA_CACHE: Dict[str, Dict[str, object]] = {}
 # -----------------------------------------------------------------------------
 # In-memory rate limit (per IP)
 _RATE_BUCKETS: Dict[str, List[float]] = {}
-RATE_WINDOW_SECS = 5
-RATE_MAX_CALLS = 1
+RATE_WINDOW_DEFAULT = 15
+RATE_MAX_DEFAULT = 5
+
+
+def _get_rate_limits() -> Tuple[int, int]:
+    """Fetch admin-configured rate limits (fail-safe to sane defaults)."""
+
+    def _to_int(val: object, default: int) -> int:
+        try:
+            return max(1, int(val))
+        except Exception:
+            return default
+
+    window = _to_int(_get_icp_param("website_ai_chat_min.rate_limit_window", RATE_WINDOW_DEFAULT), RATE_WINDOW_DEFAULT)
+    max_calls = _to_int(_get_icp_param("website_ai_chat_min.rate_limit_max", RATE_MAX_DEFAULT), RATE_MAX_DEFAULT)
+    return window, max_calls
 
 def _client_ip() -> str:
     try:
@@ -30,14 +44,15 @@ def _client_ip() -> str:
         return "0.0.0.0"
 
 def _throttle() -> bool:
-    """Token-bucket style throttle per client IP."""
+    """Token-bucket style throttle per client IP (admin-configurable)."""
     now = time.time()
     ip = _client_ip()
+    window_secs, max_calls = _get_rate_limits()
     bucket = _RATE_BUCKETS.setdefault(ip, [])
-    cutoff = now - RATE_WINDOW_SECS
+    cutoff = now - window_secs
     while bucket and bucket[0] < cutoff:
         bucket.pop(0)
-    if len(bucket) >= RATE_MAX_CALLS:
+    if len(bucket) >= max_calls:
         return False
     bucket.append(now)
     return True
@@ -52,6 +67,34 @@ def _get_icp_param(name: str, default: str = "") -> str:
         return _icp().get_param(name, default) or default
     except Exception:
         return default
+
+def _get_icp_bool(name: str, default: bool = False) -> bool:
+    try:
+        return bool(tools.str2bool(_icp().get_param(name, default)))
+    except Exception:
+        return bool(default)
+
+def _get_icp_int(name: str, default: int = 0, min_value: int = 0, max_value: Optional[int] = None) -> int:
+    try:
+        val = int(_icp().get_param(name, default))
+        if val < min_value:
+            return min_value
+        if max_value is not None and val > max_value:
+            return max_value
+        return val
+    except Exception:
+        return max(min_value, default)
+
+def _get_icp_float(name: str, default: float = 0.0, min_value: float = 0.0, max_value: Optional[float] = None) -> float:
+    try:
+        val = float(_icp().get_param(name, default))
+        if val < min_value:
+            return min_value
+        if max_value is not None and val > max_value:
+            return max_value
+        return val
+    except Exception:
+        return max(min_value, default)
 
 # -----------------------------------------------------------------------------
 # Store helpers (normalize + fetch from ICP)
@@ -106,7 +149,7 @@ def _build_system_preamble(system_prompt: str, snippets: List[Tuple[str, int, st
     return "\n\n".join(lines)
 
 # -----------------------------------------------------------------------------
-# Provider base + adapters (OpenAI / Gemini)
+# Provider base + adapters (Gemini only)
 class _ProviderBase:
     def __init__(self, api_key: str, model: str, timeout: int, temperature: float, max_tokens: int):
         self.api_key = api_key
@@ -127,46 +170,6 @@ class _ProviderBase:
                 last = e
                 time.sleep(0.4)
         raise last or RuntimeError("provider failed")
-
-class _OpenAIProvider(_ProviderBase):
-    def ask(self, system_text: str, user_text: str) -> str:
-        try:
-            import openai
-        except Exception:
-            return "The OpenAI client library is not installed on the server."
-        openai.api_key = self.api_key
-
-        timeout_ms = self.timeout * 1000 if self.timeout < 1000 else self.timeout
-
-        def _call() -> str:
-            try:
-                resp = openai.ChatCompletion.create(
-                    model=self.model,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    messages=[
-                        {"role": "system", "content": system_text},
-                        {"role": "user", "content": user_text},
-                    ],
-                    request_timeout=timeout_ms,
-                )
-                txt = resp["choices"][0]["message"]["content"].strip()
-                return txt
-            except AttributeError:
-                client = openai.OpenAI(api_key=self.api_key)
-                r = client.chat.completions.create(
-                    model=self.model,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    messages=[
-                        {"role": "system", "content": system_text},
-                        {"role": "user", "content": user_text},
-                    ],
-                    timeout=timeout_ms,
-                )
-                return (r.choices[0].message.content or "").strip()
-
-        return self._with_retries(_call)
 
 class _GeminiProvider(_ProviderBase):
     def __init__(self, *args, file_store_id: str = "", **kwargs):
@@ -270,12 +273,10 @@ class _GeminiProvider(_ProviderBase):
         return f"Error during Gemini request: {last_exc}"
 
 def _get_provider(cfg: Dict[str, Any]) -> _ProviderBase:
-    if (cfg["provider"] or "").strip().lower() == "gemini":
-        return _GeminiProvider(
-            cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"],
-            file_store_id=cfg.get("file_store_id", ""),
-        )
-    return _OpenAIProvider(cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"])
+    return _GeminiProvider(
+        cfg["api_key"], cfg["model"], cfg["timeout"], cfg["temperature"], cfg["max_tokens"],
+        file_store_id=cfg.get("file_store_id", ""),
+    )
 
 # -----------------------------------------------------------------------------
 # Config loader
@@ -284,22 +285,26 @@ AI_DEFAULT_TEMPERATURE = 0.2
 AI_DEFAULT_MAX_TOKENS = 512
 
 def _get_ai_config() -> Dict[str, Any]:
-    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini")
+    provider = _get_icp_param("website_ai_chat_min.ai_provider", "gemini") or "gemini"
     api_key = _get_icp_param("website_ai_chat_min.ai_api_key", "")
-    model = _get_icp_param("website_ai_chat_min.ai_model", "")
+    model = _get_icp_param("website_ai_chat_min.ai_model", "gemini-1.5-flash")
     system_prompt = _get_icp_param("website_ai_chat_min.system_prompt", "")
     docs_folder = _get_icp_param("website_ai_chat_min.docs_folder", "")
 
-    file_search_enabled = _get_icp_param("website_ai_chat_min.file_search_enabled", False)
+    file_search_enabled = _get_icp_bool("website_ai_chat_min.file_search_enabled", False)
     file_store_id = _normalize_store(_get_icp_param("website_ai_chat_min.file_store_id", ""))
 
     file_search_index = _get_icp_param("website_ai_chat_min.file_search_index", "")
     allowed_regex = _get_icp_param("website_ai_chat_min.allowed_regex", "")
-    redact_pii = _get_icp_param("website_ai_chat_min.redact_pii", False)
+    redact_pii = _get_icp_bool("website_ai_chat_min.redact_pii", False)
+    cache_enabled = _get_icp_bool("website_ai_chat_min.cache_enabled", False)
+    advanced_router_enabled = _get_icp_bool("website_ai_chat_min.advanced_router_enabled", False)
 
-    temperature = 0.3
-    max_tokens = 1536
-    timeout = 60
+    rate_window, rate_max = _get_rate_limits()
+
+    temperature = _get_icp_float("website_ai_chat_min.ai_temperature", AI_DEFAULT_TEMPERATURE, min_value=0.0, max_value=2.0)
+    max_tokens = _get_icp_int("website_ai_chat_min.ai_max_tokens", AI_DEFAULT_MAX_TOKENS, min_value=1)
+    timeout = _get_icp_int("website_ai_chat_min.ai_timeout", AI_DEFAULT_TIMEOUT, min_value=1)
 
     return {
         "provider": provider,
@@ -312,9 +317,13 @@ def _get_ai_config() -> Dict[str, Any]:
         "file_search_index": file_search_index,
         "allowed_regex": allowed_regex,
         "redact_pii": redact_pii,
+        "cache_enabled": cache_enabled,
+        "advanced_router_enabled": advanced_router_enabled,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "timeout": timeout,
+        "rate_limit_window": rate_window,
+        "rate_limit_max": rate_max,
     }
 
 # -----------------------------------------------------------------------------
@@ -453,7 +462,7 @@ class AiChatController(http.Controller):
 
         # Cache lookup — include provider, model, and effective store
         cache_key = f"{cfg['provider']}|{cfg['model']}|{cfg.get('file_store_id', '')}|{outbound_q}"
-        cached = _QA_CACHE.get(cache_key)
+        cached = _QA_CACHE.get(cache_key) if cfg.get("cache_enabled") else None
         if cached:
             ui = dict(cached["ui"])
             ui.setdefault("ai_status", {
@@ -496,6 +505,7 @@ class AiChatController(http.Controller):
         }
 
         # Cache and return
-        _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
+        if cfg.get("cache_enabled"):
+            _QA_CACHE[cache_key] = {"reply": ui["answer_md"], "ui": dict(ui)}
         return {"ok": True, "reply": (ui["answer_md"] or _("(No answer returned.)")), "ui": ui}
 

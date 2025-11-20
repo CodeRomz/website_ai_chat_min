@@ -69,17 +69,17 @@ class ResConfigSettings(models.TransientModel):
     # Core provider/model/auth (left intact)
     # ---------------------------------------------------------------------
     ai_provider = fields.Selection(
-        [("openai", "OpenAI"), ("gemini", "Google Gemini")],
+        [("gemini", "Google Gemini")],
         string="AI Provider",
-        default="openai",
+        default="gemini",
         config_parameter="website_ai_chat_min.ai_provider",
-        help="Select the AI provider to use for chat responses.",
+        help="Gemini is the only supported provider.",
     )
     ai_model = fields.Char(
         string="Model",
-        default="gpt-4o-mini",
+        default="gemini-1.5-flash",
         config_parameter="website_ai_chat_min.ai_model",
-        help="Exact model name supported by the selected provider.",
+        help="Exact Gemini model name to use for chat responses.",
         size=128,
     )
     ai_api_key = fields.Char(
