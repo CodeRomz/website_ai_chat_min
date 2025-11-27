@@ -96,12 +96,17 @@ class AiChatController(http.Controller):
 
         :param model_name: Gemini model string chosen on the UI
         :return: dict with keys:
-            - model_name
+            - requested_model_name  (raw from UI, normalized)
+            - model_name            (effective, allowed model)
             - prompt_limit
             - tokens_per_prompt
             - all_models: list of dicts
         """
+        # Normalise model_name coming from the UI immediately
+        requested_model = tools.ustr(model_name or "").strip()
+
         result = {
+            "requested_model_name": requested_model,
             "model_name": None,
             "prompt_limit": None,
             "tokens_per_prompt": None,
@@ -145,10 +150,8 @@ class AiChatController(http.Controller):
 
         result["all_models"] = all_models
 
-        # Normalise model_name coming from the UI
-        gemini_model = tools.ustr(model_name or "").strip()
-
         # If UI selected a specific model, use aic.user.get_user_model_limits()
+        gemini_model = requested_model
         if gemini_model:
             limits = None
             try:
@@ -170,9 +173,11 @@ class AiChatController(http.Controller):
                     result["model_name"] = gemini_model
                     result["prompt_limit"] = limits.get("prompt_limit")
                     result["tokens_per_prompt"] = limits.get("tokens_per_prompt")
+            # We do NOT auto-switch to another model if the requested one
+            # is not configured; result["model_name"] stays None in that case.
             return result
 
-        # No model_name was passed: fallback = first active line
+        # No model_name was passed at all: fallback = first active line
         try:
             line = aic_user_rec.aic_line_ids.filtered(lambda l: l.active)[:1]
         except Exception as exc:
@@ -252,7 +257,6 @@ class AiChatController(http.Controller):
             "default_model": limits_info.get("model_name"),
         }
 
-
     @http.route(
         "/ai_chat/send",
         type="json",
@@ -268,18 +272,25 @@ class AiChatController(http.Controller):
           - model_name
           - gemini_model
           - model
+
+        We:
+          * Take the model selected in the frontend chips.
+          * Look up that exact model in aic.user limits.
+          * Log both the requested (UI) model and the effective
+            configured model (if any).
         """
         try:
             q = tools.ustr(question or "").strip()
             user = request.env.user if request and request.env else None
 
             # Which model did the UI ask for (if any)?
-            selected_model = (
+            selected_model_raw = tools.ustr(
                 model_name
                 or kwargs.get("model_name")
                 or kwargs.get("gemini_model")
                 or kwargs.get("model")
-            )
+                or ""
+            ).strip() or None
 
             # aic.user config for current user
             aic_user_rec = self._get_aic_user_for_current_user()
@@ -293,8 +304,13 @@ class AiChatController(http.Controller):
 
             # Per-user / per-model limits (and full list for logging)
             limits_info = self._get_user_model_limits_for_current_user(
-                model_name=selected_model,
+                model_name=selected_model_raw,
             )
+
+            requested_model = limits_info.get("requested_model_name")
+            effective_model = limits_info.get("model_name")
+            prompt_limit = limits_info.get("prompt_limit")
+            tokens_per_prompt = limits_info.get("tokens_per_prompt")
 
             all_models_summary = ", ".join(
                 "{}: prompts={}, tokens={}".format(
@@ -305,20 +321,30 @@ class AiChatController(http.Controller):
                 for item in limits_info.get("all_models") or []
             ) or "NO_MODEL_LIMITS"
 
+            # Optional extra signal if the user picks a model they are not configured for
+            if requested_model and not effective_model:
+                _logger.warning(
+                    "AI Chat: user_id=%s requested model '%s' which is not "
+                    "configured/allowed for this user.",
+                    getattr(user, "id", None),
+                    requested_model,
+                )
+
             _logger.info(
                 (
                     "AI Chat question: %r | user_id=%s | has_aic_user=%s | "
-                    "aic_user_rec_id=%s | selected_model=%s | prompt_limit=%s | "
-                    "tokens_per_prompt=%s | all_model_limits=[%s] | "
-                    "file_store_id=%s | API_KEY=%s"
+                    "aic_user_rec_id=%s | ui_model=%s | effective_model=%s | "
+                    "prompt_limit=%s | tokens_per_prompt=%s | "
+                    "all_model_limits=[%s] | file_store_id=%s | API_KEY=%s"
                 ),
                 q,
                 getattr(user, "id", None),
                 has_aic_user,
                 aic_user_rec.id if aic_user_rec else None,
-                limits_info.get("model_name"),
-                limits_info.get("prompt_limit"),
-                limits_info.get("tokens_per_prompt"),
+                requested_model,
+                effective_model,
+                prompt_limit,
+                tokens_per_prompt,
                 all_models_summary,
                 file_store_id,
                 masked_key,
