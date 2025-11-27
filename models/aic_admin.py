@@ -35,7 +35,7 @@ class aic_admin(models.Model):
         help="If disabled, limits for this user will be ignored.",
     )
 
-    user_id = fields.Many2one(
+    aic_user_id = fields.Many2one(
         comodel_name="res.users",
         string="User",
         required=True,
@@ -45,7 +45,7 @@ class aic_admin(models.Model):
         help="User who is allowed to use the AI chat with configured limits.",
     )
 
-    line_ids = fields.One2many(
+    aic_line_ids = fields.One2many(
         comodel_name="aic.user_quota_line",
         inverse_name="quota_id",
         string="Model Limits",
@@ -71,9 +71,9 @@ class aic_admin(models.Model):
         """
         try:
             if isinstance(user, models.BaseModel):
-                user_id = user.id
+                aic_user_id = user.id
             else:
-                user_id = int(user)
+                aic_user_id = int(user)
         except (TypeError, ValueError) as exc:
             _logger.error(
                 "Invalid user argument for get_user_model_limits: %s (%s)",
@@ -84,11 +84,11 @@ class aic_admin(models.Model):
 
         result = None
         try:
-            if not user_id or not model_name:
+            if not aic_user_id or not model_name:
                 return None
 
             admin_rec = self.search(
-                [("user_id", "=", user_id), ("active", "=", True)],
+                [("user_id", "=", aic_user_id), ("active", "=", True)],
                 limit=1,
             )
             if not admin_rec:
@@ -110,7 +110,7 @@ class aic_admin(models.Model):
         except Exception as exc:
             _logger.exception(
                 "Error fetching AI chat limits for user %s, model %s: %s",
-                user_id,
+                aic_user_id,
                 model_name,
                 exc,
             )
@@ -140,7 +140,7 @@ class aic_user_quota_line(models.Model):
         help="If disabled, this specific model limit will not be enforced.",
     )
 
-    quota_id = fields.Many2one(
+    aic_quota_id = fields.Many2one(
         comodel_name="aic.admin",
         string="Chat Admin Config",
         required=True,
@@ -150,18 +150,18 @@ class aic_user_quota_line(models.Model):
         help="The AI chat admin configuration this line belongs to.",
     )
 
-    model_id = fields.Many2one(
+    aic_model_id = fields.Many2one(
         comodel_name="ir.model",
         string="Model",
         required=True,
-        ondelete="restrict",
+        ondelete="cascade",
         domain=[("transient", "=", False)],
         tracking=True,
         help="Odoo business model the user can use in the chat "
              "(e.g. 'res.partner').",
     )
 
-    model_technical_name = fields.Char(
+    aic_model_technical_name = fields.Char(
         string="Technical Model Name",
         related="model_id.model",
         store=True,
@@ -170,7 +170,7 @@ class aic_user_quota_line(models.Model):
              "from the chat logic.",
     )
 
-    prompt_limit = fields.Integer(
+    aic_prompt_limit = fields.Integer(
         string="Prompt Limit",
         required=True,
         default=0,
@@ -181,7 +181,7 @@ class aic_user_quota_line(models.Model):
         ),
     )
 
-    tokens_per_prompt = fields.Integer(
+    aic_tokens_per_prompt = fields.Integer(
         string="Tokens per Prompt",
         required=True,
         default=0,
