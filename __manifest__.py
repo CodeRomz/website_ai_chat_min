@@ -22,7 +22,7 @@
         "views/res_config_settings_views.xml",
         "views/ai_chat_templates.xml",
         "views/aic_main_menu.xml",
-        "views/aic_user.xml",
+        "views/aic_user_list.xml",
     ],
     "assets": {
         "web.assets_frontend": [
