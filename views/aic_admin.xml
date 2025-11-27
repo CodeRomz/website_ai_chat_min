@@ -114,6 +114,6 @@
               parent="aic_menu_ai_root"
               action="aic_admin_action"
               sequence="10"
-              groups="base.group_system"/>
+              groups="group_ai_chat_admin"/>
 
 </odoo>
