@@ -79,13 +79,6 @@ class AiChatController(http.Controller):
             # Mask API key in logs so we don't leak the secret
             masked_key = api_key[:6] + "..." if api_key else ""
 
-            _logger.info(
-                "AI Chat config loaded | api_key_set=%s | api_key_prefix=%s | file_store_id=%s",
-                bool(api_key),
-                masked_key,
-                file_store_id,
-            )
-
             return {
                 "api_key": api_key,
                 "file_store_id": file_store_id,
@@ -121,13 +114,14 @@ class AiChatController(http.Controller):
             _logger.info(
                 (
                     "AI Chat question: %r | user_id=%s | has_aic_admin=%s | "
-                    "aic_admin_id=%s | file_store_id=%s"
+                    "aic_admin_id=%s | file_store_id=%s | API_KEY=%s"
                 ),
                 q,
                 getattr(user, "id", None),
                 is_ai_user,
                 admin_rec.id if admin_rec else None,
                 ai_config.get("file_store_id"),
+                ai_config.get("api_key"),
             )
 
         except Exception as exc:
