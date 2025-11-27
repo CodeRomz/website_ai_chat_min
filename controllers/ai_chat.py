@@ -62,24 +62,12 @@ class AiChatController(http.Controller):
             )
             return None
 
-    @http.route(
-        "/ai_chat/can_load",
-        type="json",
-        auth="user",
-        methods=["POST"],
-        csrf=True,
-    )
+    @http.route( "/ai_chat/can_load", type="json", auth="user", methods=["POST"], csrf=True, )
     def can_load(self, **kwargs):
         # For now: always allow mounting. We'll plug aic.admin checks here later.
         return {"show": True}
 
-    @http.route(
-        "/ai_chat/send",
-        type="json",
-        auth="user",
-        methods=["POST"],
-        csrf=True,
-    )
+    @http.route( "/ai_chat/send", type="json", auth="user", ethods=["POST"], csrf=True, )
     def send(self, question=None, **kwargs):
         """Receive the question from JSON-RPC params and log it."""
         try:
