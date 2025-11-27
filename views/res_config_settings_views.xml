@@ -12,7 +12,6 @@
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-
                     <setting string="API Key"
                              help="Stored in system parameters; keep secret.">
                         <field name="ai_api_key" password="True"/>
@@ -23,10 +22,6 @@
                         <field name="privacy_url"/>
                     </setting>
 
-                    <setting string="Enable AI Chat Caching"
-                             help="If enabled, the chat caches document retrievals and computed replies to speed up repeated queries.">
-                        <field name="cache_enabled"/>
-                    </setting>
 
                     <setting string="File Store ID"
                              help="File Store ID From Gemini">

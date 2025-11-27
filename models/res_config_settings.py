@@ -48,15 +48,6 @@ class ResConfigSettings(models.TransientModel):
         size=1024,
     )
 
-    cache_enabled = fields.Boolean(
-        string="Enable AI Chat Caching",
-        config_parameter="website_ai_chat_min.cache_enabled",
-        help=(
-            "If enabled, the chat will cache document retrievals and computed "
-            "replies to speed up repeated queries."
-        ),
-        default=False,
-    )
 
     # ---------------------------------------------------------------------
     # Gemini File Search
