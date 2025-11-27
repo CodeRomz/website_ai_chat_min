@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from odoo import models, fields, api, tools, _
+from odoo import http, models, fields, api, tools, _
 from odoo.exceptions import (
     UserError,
     ValidationError,
@@ -14,7 +14,6 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-from odoo import http
 from odoo.http import request
 
 # Optional dependency: google-genai
@@ -208,14 +207,7 @@ class AiChatController(http.Controller):
 
         return result
 
-    def _call_gemini(
-        self,
-        api_key,
-        file_store_id,
-        model_name,
-        prompt,
-        max_output_tokens,
-    ):
+    def _call_gemini(self, api_key, file_store_id, model_name, prompt, max_output_tokens, ):
         """
         Call Google Generative AI (Gemini) with optional File Search tool.
 
@@ -313,13 +305,7 @@ class AiChatController(http.Controller):
     # Routes
     # -------------------------------------------------------------------------
 
-    @http.route(
-        "/ai_chat/can_load",
-        type="json",
-        auth="user",
-        methods=["POST"],
-        csrf=True,
-    )
+    @http.route("/ai_chat/can_load", type="json", auth="user", methods=["POST"], csrf=True, )
     def can_load(self, **kwargs):
         """
         JS checks this to know if it should mount the chat widget.
@@ -329,13 +315,7 @@ class AiChatController(http.Controller):
         aic_user_rec = self._get_aic_user_for_current_user()
         return {"show": bool(aic_user_rec)}
 
-    @http.route(
-        "/ai_chat/models",
-        type="json",
-        auth="user",
-        methods=["POST"],
-        csrf=True,
-    )
+    @http.route("/ai_chat/models", type="json", auth="user", methods=["POST"], csrf=True, )
     def get_models(self, **kwargs):
         """
         Return list of Gemini models and limits for the current user.
@@ -371,13 +351,7 @@ class AiChatController(http.Controller):
             "default_model": limits_info.get("model_name"),
         }
 
-    @http.route(
-        "/ai_chat/send",
-        type="json",
-        auth="user",
-        methods=["POST"],
-        csrf=True,
-    )
+    @http.route("/ai_chat/send", type="json", auth="user", methods=["POST"], csrf=True, )
     def send(self, question=None, model_name=None, **kwargs):
         """
         Receive the question from JSON-RPC and forward it to Gemini.
