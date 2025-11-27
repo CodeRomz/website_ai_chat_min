@@ -13,7 +13,7 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-class aic_admin(models.Model):
+class AicAdmin(models.Model):
     """
     Per-user AI chat configuration.
 
@@ -25,8 +25,8 @@ class aic_admin(models.Model):
     _name = "aic.admin"
     _inherit = ["mail.activity.mixin", "mail.thread"]
     _description = "Chat Admin"
-    _rec_name = "user_id"
-    _order = "user_id"
+    _rec_name = "aic_user_id"
+    _order = "aic_user_id"
 
     active = fields.Boolean(
         string="Active",
@@ -47,7 +47,7 @@ class aic_admin(models.Model):
 
     aic_line_ids = fields.One2many(
         comodel_name="aic.user_quota_line",
-        inverse_name="quota_id",
+        inverse_name="aic_quota_id",
         string="Model Limits",
         help="Per-model AI chat limits for this user.",
     )
@@ -55,7 +55,7 @@ class aic_admin(models.Model):
     _sql_constraints = [
         (
             "aic_admin_user_unique",
-            "unique(user_id)",
+            "unique(aic_user_id)",
             "There is already an AI chat configuration record for this user.",
         ),
     ]
@@ -88,24 +88,25 @@ class aic_admin(models.Model):
                 return None
 
             admin_rec = self.search(
-                [("user_id", "=", aic_user_id), ("active", "=", True)],
+                [("aic_user_id", "=", aic_user_id), ("active", "=", True)],
                 limit=1,
             )
             if not admin_rec:
                 return None
 
             # Filter on related technical name for speed.
-            line = admin_rec.line_ids.filtered(
-                lambda l: l.model_technical_name == model_name
-                or l.model_id.model == model_name
+            line = admin_rec.aic_line_ids.filtered(
+                lambda l: l.aic_model_technical_name == model_name
+                or l.aic_model_id.model == model_name
             )[:1]
 
             if not line:
                 return None
 
             result = {
-                "prompt_limit": line.prompt_limit,
-                "tokens_per_prompt": line.tokens_per_prompt,
+                # External API keys kept generic on purpose
+                "prompt_limit": line.aic_prompt_limit,
+                "tokens_per_prompt": line.aic_tokens_per_prompt,
             }
         except Exception as exc:
             _logger.exception(
@@ -120,7 +121,7 @@ class aic_admin(models.Model):
             return result
 
 
-class aic_user_quota_line(models.Model):
+class AicUserQuotaLine(models.Model):
     """
     Per-model limits attached to aic.admin.
 
@@ -131,7 +132,7 @@ class aic_user_quota_line(models.Model):
     _name = "aic.user_quota_line"
     _inherit = ["mail.activity.mixin", "mail.thread"]
     _description = "AI Chat Per Model Limits"
-    _order = "model_id"
+    _order = "aic_model_id"
 
     active = fields.Boolean(
         string="Active",
@@ -163,7 +164,7 @@ class aic_user_quota_line(models.Model):
 
     aic_model_technical_name = fields.Char(
         string="Technical Model Name",
-        related="model_id.model",
+        related="aic_model_id.model",
         store=True,
         readonly=True,
         help="Cached technical model name for faster lookups "
@@ -192,28 +193,28 @@ class aic_user_quota_line(models.Model):
     _sql_constraints = [
         (
             "aic_user_quota_line_unique_model",
-            "unique(quota_id, model_id)",
+            "unique(aic_quota_id, aic_model_id)",
             "You already defined AI chat limits for this model "
             "for the selected user.",
         ),
     ]
 
-    @api.constrains("prompt_limit", "tokens_per_prompt")
+    @api.constrains("aic_prompt_limit", "aic_tokens_per_prompt")
     def _check_non_negative_limits(self):
         """Ensure prompt/token limits are not negative."""
         for line in self:
-            if line.prompt_limit < 0:
+            if line.aic_prompt_limit < 0:
                 raise ValidationError(
                     _(
                         "Prompt limit for model '%(model)s' cannot be negative.",
-                        model=line.model_id.display_name,
+                        model=line.aic_model_id.display_name,
                     )
                 )
-            if line.tokens_per_prompt < 0:
+            if line.aic_tokens_per_prompt < 0:
                 raise ValidationError(
                     _(
                         "Tokens per prompt for model '%(model)s' "
                         "cannot be negative.",
-                        model=line.model_id.display_name,
+                        model=line.aic_model_id.display_name,
                     )
                 )

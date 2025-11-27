@@ -9,9 +9,9 @@
         <field name="name">aic.admin.tree</field>
         <field name="model">aic.admin</field>
         <field name="arch" type="xml">
-            <tree string="AI Chat Admin">
+            <tree string="AI Chat Admin" decoration-muted="not active">
                 <field name="active"/>
-                <field name="user_id"/>
+                <field name="aic_user_id"/>
             </tree>
         </field>
     </record>
@@ -25,7 +25,7 @@
         <field name="model">aic.admin</field>
         <field name="arch" type="xml">
             <search string="AI Chat Admin">
-                <field name="user_id"/>
+                <field name="aic_user_id"/>
                 <filter name="filter_active"
                         string="Active"
                         domain="[('active', '=', True)]"/>
@@ -47,24 +47,24 @@
             <form string="AI Chat Admin">
                 <sheet>
                     <header>
-                        <!-- using statusbar on active for quick enable/disable -->
-                        <field name="active" widget="statusbar"/>
+                        <!-- Boolean active: simple toggle is fine -->
+                        <field name="active"/>
                     </header>
 
                     <group>
-                        <field name="user_id"
+                        <field name="aic_user_id"
                                required="1"
                                options="{'no_create_edit': True, 'no_create': True}"/>
                     </group>
 
                     <notebook>
                         <page string="Model Limits">
-                            <field name="line_ids">
-                                <tree editable="bottom" string="Per-Model Limits">
+                            <field name="aic_line_ids">
+                                <tree editable="bottom" string="Per-Model Limits" decoration-muted="not active">
                                     <field name="active"/>
-                                    <field name="model_id" required="1"/>
-                                    <field name="prompt_limit" required="1"/>
-                                    <field name="tokens_per_prompt" required="1"/>
+                                    <field name="aic_model_id" required="1"/>
+                                    <field name="aic_prompt_limit" required="1"/>
+                                    <field name="aic_tokens_per_prompt" required="1"/>
                                 </tree>
                             </field>
                         </page>
@@ -72,11 +72,11 @@
                 </sheet>
 
                 <!-- chatter (mail.thread + mail.activity.mixin) -->
-                <div class="oe_chatter">
+                <chatter>
                     <field name="message_follower_ids" widget="mail_follower"/>
                     <field name="message_ids" widget="mail_thread"/>
                     <field name="activity_ids" widget="mail_activity"/>
-                </div>
+                </chatter>
             </form>
         </field>
     </record>
@@ -101,19 +101,12 @@
 
     <!-- =====================================================
          Menus
-         NOTE:
-         - Root menu under base.menu_administration
-         - Visible only to system administrators (base.group_system)
-         Adjust parent/groups if you already have an AI root menu.
          ===================================================== -->
 
-
-    <!-- User Limits submenu -->
     <menuitem id="aic_menu_ai_admin"
               name="User Limits"
               parent="aic_menu_ai_root"
               action="aic_admin_action"
               sequence="10"
               groups="group_ai_chat_admin"/>
-
 </odoo>

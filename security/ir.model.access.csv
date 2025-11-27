@@ -1,3 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_aic_admin_system,aic.admin,model_aic_admin,group_ai_chat_admin,1,1,1,1
-access_aic_user_quota_line_system,aic.user_quota_line,model_aic_user_quota_line,group_ai_chat_admin,1,1,1,1
+access_aic_admin_admin,AI Chat Admin - Admin Access,website_ai_chat_min.model_aic_admin,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_user_quota_line_admin,AI Chat User Quota Line - Admin Access,website_ai_chat_min.model_aic_user_quota_line,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
