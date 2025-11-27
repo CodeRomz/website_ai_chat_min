@@ -21,7 +21,7 @@
         "security/ir.model.access.csv",
         "views/res_config_settings_views.xml",
         "views/ai_chat_templates.xml",
-        "views/aic_main_menu.xml"
+        "views/aic_main_menu.xml",
         "views/aic_admin.xml",
     ],
     "assets": {
