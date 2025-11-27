@@ -12,32 +12,26 @@
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-                    <setting string="API Key" help="Stored in system parameters; keep secret.">
+
+                    <setting string="API Key"
+                             help="Stored in system parameters; keep secret.">
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="Privacy Policy URL" help="Optional link shown below the chat box.">
+                    <setting string="Privacy Policy URL"
+                             help="Optional link shown below the chat box.">
                         <field name="privacy_url"/>
                     </setting>
 
-                    <!-- NEW: caching and advanced router toggles -->
                     <setting string="Enable AI Chat Caching"
                              help="If enabled, the chat caches document retrievals and computed replies to speed up repeated queries.">
                         <field name="cache_enabled"/>
                     </setting>
 
-
-                    <!-- NEW: Gemini File Search options -->
-                    <setting string="Enable Gemini File Search"
-                             help="When using the Gemini provider, offload document retrieval to a FileSearchStore instead of scanning local documents.  Requires specifying the store name below.">
-                        <field name="file_search_enabled"/>
-                    </setting>
-
                     <setting string="File Store ID"
-                             help="File Store ID From Gemini ">
+                             help="File Store ID From Gemini">
                         <field name="file_store_id"/>
                     </setting>
-
 
 
                 </block>

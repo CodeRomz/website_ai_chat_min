@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import annotations
-
-import logging
-import os
-import time
-import mimetypes
 
 from odoo import models, fields, api, tools, _
 from odoo.exceptions import (
@@ -16,10 +10,7 @@ from odoo.exceptions import (
     CacheMiss,
     MissingError,
 )
-
-# Google GenAI (new SDK)
-from google import genai
-from google.genai import types  # kept for compatibility if you reference types elsewhere
+import logging
 
 _logger = logging.getLogger(__name__)
 
@@ -27,14 +18,18 @@ _logger = logging.getLogger(__name__)
 def _normalize_store(name: str) -> str:
     """Ensure we always use a fully-qualified store resource name."""
     name = (name or "").strip()
-    return name if (not name or name.startswith("fileSearchStores/")) else f"fileSearchStores/{name}"
+    if not name:
+        return ""
+    if name.startswith("fileSearchStores/"):
+        return name
+    return f"fileSearchStores/{name}"
 
 
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
     # ---------------------------------------------------------------------
-    # Core provider/model/auth (left intact)
+    # Core provider/model/auth
     # ---------------------------------------------------------------------
     ai_api_key = fields.Char(
         string="API Key",
@@ -43,10 +38,8 @@ class ResConfigSettings(models.TransientModel):
         size=512,
     )
 
-
-
     # ---------------------------------------------------------------------
-    # Misc (kept)
+    # Misc
     # ---------------------------------------------------------------------
     privacy_url = fields.Char(
         string="Privacy Policy URL",
@@ -55,15 +48,15 @@ class ResConfigSettings(models.TransientModel):
         size=1024,
     )
 
-    # Optional features (kept)
     cache_enabled = fields.Boolean(
         string="Enable AI Chat Caching",
         config_parameter="website_ai_chat_min.cache_enabled",
-        help="If enabled, the chat will cache document retrievals and computed replies "
-        "to speed up repeated queries.",
+        help=(
+            "If enabled, the chat will cache document retrievals and computed "
+            "replies to speed up repeated queries."
+        ),
         default=False,
     )
-
 
     # ---------------------------------------------------------------------
     # Gemini File Search
@@ -72,6 +65,6 @@ class ResConfigSettings(models.TransientModel):
     file_store_id = fields.Char(
         string="File Store ID",
         config_parameter="website_ai_chat_min.file_store_id",
-        help="File Store ID From Gemini",
+        help="File Store ID from Gemini (e.g. the FileSearchStore identifier).",
         size=256,
     )
