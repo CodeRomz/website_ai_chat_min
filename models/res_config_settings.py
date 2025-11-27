@@ -41,20 +41,6 @@ _MIME_MAP = {
 }
 
 
-def _guess_mime(path: str) -> str:
-    """Return a safe MIME type for the given path or raise a clear error."""
-    ext = os.path.splitext(path)[1].lower()
-    m = _MIME_MAP.get(ext) or mimetypes.guess_type(path)[0]
-    if not m:
-        raise UserError(
-            _(
-                "Unsupported or unknown file type for: %s. "
-                "Use .pdf, .docx, .md, or .txt (or extend the MIME map)."
-            )
-            % path
-        )
-    return m
-
 
 def _normalize_store(name: str) -> str:
     """Ensure we always use a fully-qualified store resource name."""
@@ -100,15 +86,6 @@ class ResConfigSettings(models.TransientModel):
     # ---------------------------------------------------------------------
     # Gemini File Search
     # ---------------------------------------------------------------------
-    file_search_enabled = fields.Boolean(
-        string="Enable Gemini File Search",
-        config_parameter="website_ai_chat_min.file_search_enabled",
-        help=(
-            "When using the Gemini provider, enable Retrieval-Augmented Generation via "
-            "File Search. Requires a File Search Store."
-        ),
-        default=False,
-    )
 
     file_store_id = fields.Char(
         string="File Store ID",
