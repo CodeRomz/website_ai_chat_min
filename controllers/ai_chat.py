@@ -219,6 +219,41 @@ class AiChatController(http.Controller):
         return {"show": True}
 
     @http.route(
+        "/ai_chat/models",
+        type="json",
+        auth="user",
+        methods=["POST"],
+        csrf=True,
+    )
+    def get_models(self, **kwargs):
+        """
+        Return list of Gemini models and limits for the current user.
+
+        Shape returned to JS:
+        {
+            "ok": True,
+            "models": [
+                {"model_name": "gemini-2.0-flash", "prompt_limit": 20, "tokens_per_prompt": 8192},
+                ...
+            ],
+            "default_model": "gemini-2.0-flash"
+        }
+        """
+        user = request.env.user if request and request.env else None
+        if not user or not getattr(user, "id", False):
+            return {"ok": False, "models": []}
+
+        limits_info = self._get_user_model_limits_for_current_user()
+        models = limits_info.get("all_models") or []
+
+        return {
+            "ok": True,
+            "models": models,
+            "default_model": limits_info.get("model_name"),
+        }
+
+
+    @http.route(
         "/ai_chat/send",
         type="json",
         auth="user",

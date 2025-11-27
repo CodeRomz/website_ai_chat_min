@@ -243,3 +243,48 @@
     width: auto; height: auto;
   }
 }
+
+
+
+/* ---------- Model Selector (per-user limits) ---------- */
+.waicm .ai-chat-min__models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--ai-border);
+  background: #0b1020;
+}
+
+.waicm .ai-chat-min__model {
+  border: 1px solid var(--ai-border);
+  border-radius: var(--ai-pill);
+  padding: 4px 10px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.02);
+  color: var(--ai-text);
+  font-size: 0.85em;
+  line-height: 1.2;
+  opacity: 0.9;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease, opacity 0.12s ease;
+}
+
+.waicm .ai-chat-min__model span {
+  display: block;
+  font-size: 0.75em;
+  color: var(--ai-subtle);
+  margin-top: 2px;
+}
+
+.waicm .ai-chat-min__model:hover {
+  background: rgba(var(--ai-accent-rgb), 0.12);
+  transform: translateY(-1px);
+  opacity: 1;
+}
+
+.waicm .ai-chat-min__model.is-active {
+  border-color: rgba(var(--ai-accent-rgb), 0.85);
+  background: rgba(var(--ai-accent-rgb), 0.18);
+  color: #fff;
+  opacity: 1;
+}

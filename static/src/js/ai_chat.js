@@ -1,5 +1,9 @@
 (() => {
   "use strict";
+
+  // Currently selected Gemini model (from chips)
+  let selectedModelName = null;
+
   // Unwrap Odoo JSON-RPC envelopes
   const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
 
@@ -128,6 +132,11 @@
   const body = document.createElement("div");
   body.className = "ai-chat-min__body";
 
+  // Models bar (per-user Gemini models)
+  const modelsBar = document.createElement("div");
+  modelsBar.className = "ai-chat-min__models";
+  modelsBar.style.display = "none"; // hidden until data is loaded
+
   // Footer (input + send)
   const footer = document.createElement("div");
   footer.className = "ai-chat-min__footer";
@@ -141,7 +150,9 @@
   footer.appendChild(input);
   footer.appendChild(send);
 
+  // Panel layout: header → models → body → footer
   panel.appendChild(header);
+  panel.appendChild(modelsBar);
   panel.appendChild(body);
   panel.appendChild(footer);
 
@@ -157,6 +168,7 @@
     body.appendChild(msg);
     body.scrollTop = body.scrollHeight;
   }
+
   function appendBotUI(ui) {
     const msg = document.createElement("div");
     msg.className = "ai-chat-min__msg bot";
@@ -202,6 +214,60 @@
     body.scrollTop = body.scrollHeight;
   }
 
+  // Render model chips + limits from /ai_chat/models
+  function renderModels(models, defaultModel) {
+    modelsBar.innerHTML = "";
+
+    if (!Array.isArray(models) || !models.length) {
+      modelsBar.style.display = "none";
+      selectedModelName = null;
+      return;
+    }
+
+    modelsBar.style.display = "flex";
+
+    // Choose default: backend default or first model
+    selectedModelName =
+      defaultModel || (models[0] && models[0].model_name) || null;
+
+    for (const m of models) {
+      const code = m.model_name || "";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-chat-min__model";
+
+      const label = document.createElement("div");
+      label.textContent = code || "(no model)";
+      btn.appendChild(label);
+
+      const sub = document.createElement("span");
+      const parts = [];
+      if (typeof m.prompt_limit === "number") {
+        parts.push(`Prompts: ${m.prompt_limit}`);
+      }
+      if (typeof m.tokens_per_prompt === "number") {
+        parts.push(`Tokens: ${m.tokens_per_prompt}`);
+      }
+      sub.textContent = parts.join(" • ");
+      if (sub.textContent) {
+        btn.appendChild(sub);
+      }
+
+      if (selectedModelName && code === selectedModelName) {
+        btn.classList.add("is-active");
+      }
+
+      btn.addEventListener("click", () => {
+        selectedModelName = code || null;
+        for (const child of modelsBar.querySelectorAll(".ai-chat-min__model")) {
+          child.classList.toggle("is-active", child === btn);
+        }
+      });
+
+      modelsBar.appendChild(btn);
+    }
+  }
+
   // ---- OPEN/CLOSE ----
   bubble.addEventListener("click", () => {
     panel.hidden = !panel.hidden;
@@ -236,7 +302,15 @@
     try {
       const { ok, status, data } = await fetchJSON("/ai_chat/send", {
         method: "POST",
-        body: { jsonrpc: "2.0", method: "call", params: { question: q } },
+        body: {
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            question: q,
+            // pass selected Gemini model to backend
+            model_name: selectedModelName,
+          },
+        },
         timeoutMs: 25000,
       });
 
@@ -249,6 +323,8 @@
 
       const raw = unwrap(data || {});
       if (ok && raw && raw.ok) {
+        // Your current /ai_chat/send only returns {ok, reply},
+        // so we treat reply as markdown content.
         const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
         const answerText = uiObj.answer_md || raw.reply || "";
         const ui = {
@@ -278,11 +354,38 @@
     }
   });
 
-  // Mount
+  // ---- Mount + Load models ----
   (async () => {
     const { mount, show } = await canMount();
     if (mount) {
       wrap.style.display = show ? "block" : "none";
+      if (!show) {
+        return;
+      }
+
+      // Load per-user Gemini models + limits from /ai_chat/models
+      try {
+        const { ok, status, data } = await fetchJSON("/ai_chat/models", {
+          method: "POST",
+          body: { jsonrpc: "2.0", method: "call", params: {} },
+          timeoutMs: 15000,
+        });
+
+        if (!ok && (status === 401 || status === 403)) {
+          modelsBar.style.display = "none";
+          return;
+        }
+
+        const raw = unwrap(data || {});
+        if (ok && raw && raw.ok && Array.isArray(raw.models)) {
+          renderModels(raw.models, raw.default_model || null);
+        } else {
+          modelsBar.style.display = "none";
+        }
+      } catch (e) {
+        console.error("AI Chat: unable to load model limits", e);
+        modelsBar.style.display = "none";
+      }
     }
   })();
 })();
