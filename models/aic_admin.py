@@ -162,7 +162,6 @@ class AicUserQuotaLine(models.Model):
 
     aic_model_technical_name = fields.Char(
         string="Technical Model Name",
-        related="aic_model_id.model",
         store=True,
         readonly=True,
         help="Cached technical model name for faster lookups "
