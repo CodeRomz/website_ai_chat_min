@@ -23,13 +23,13 @@ class AiChatController(http.Controller):
 
     Step 1:
       - capture user question and log it
-      - log whether the current user has an aic.admin configuration.
+      - log whether the current user has an aic.user configuration.
       - log model name, prompt limit, tokens per prompt for the current user.
     """
 
     def _get_aic_admin_for_current_user(self):
         """
-        Return the aic.admin record for the current request user, or None.
+        Return the aic.user record for the current request user, or None.
 
         This is read-only lookup, so sudo() is safe and avoids permission noise.
         """
@@ -43,7 +43,7 @@ class AiChatController(http.Controller):
                 return None
 
             admin_rec = (
-                request.env["aic.admin"]
+                request.env["aic.user"]
                 .sudo()
                 .search(
                     [
@@ -57,7 +57,7 @@ class AiChatController(http.Controller):
 
         except Exception as exc:
             _logger.exception(
-                "AI Chat: error while looking up aic.admin for user_id=%s: %s",
+                "AI Chat: error while looking up aic.user for user_id=%s: %s",
                 getattr(user, "id", None),
                 exc,
             )
@@ -96,7 +96,7 @@ class AiChatController(http.Controller):
         """
         Return model limits for the current user and the given Gemini model.
 
-        Uses aic.admin.get_user_model_limits() which already encapsulates
+        Uses aic.user.get_user_model_limits() which already encapsulates
         the logic for (user, model) lookup.
 
         :param model_name: Gemini model string (e.g. 'gemini-2.0-flash-lite')
@@ -116,7 +116,7 @@ class AiChatController(http.Controller):
             "tokens_per_prompt": None,
         }
 
-        # Quick guards before touching aic.admin
+        # Quick guards before touching aic.user
         if not user or not getattr(user, "id", False):
             return result
 
@@ -129,7 +129,7 @@ class AiChatController(http.Controller):
 
         limits = None
         try:
-            limits = (request.env["aic.admin"].sudo().get_user_model_limits(user, gemini_model))
+            limits = (request.env["aic.user"].sudo().get_user_model_limits(user, gemini_model))
         except Exception as exc:
             _logger.exception(
                 "AI Chat: error reading model limits for user_id=%s, model=%s: %s",
@@ -139,7 +139,7 @@ class AiChatController(http.Controller):
             )
         else:
             if limits:
-                # aic.admin.get_user_model_limits returns:
+                # aic.user.get_user_model_limits returns:
                 #   {'prompt_limit': int, 'tokens_per_prompt': int}
                 result["prompt_limit"] = limits.get("prompt_limit")
                 result["tokens_per_prompt"] = limits.get("tokens_per_prompt")
@@ -148,7 +148,7 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/can_load", type="json", auth="user", methods=["POST"], csrf=True, )
     def can_load(self, **kwargs):
-        # For now: always allow mounting. We'll plug aic.admin checks here later.
+        # For now: always allow mounting. We'll plug aic.user checks here later.
         return {"show": True}
 
     @http.route("/ai_chat/send", type="json", auth="user", methods=["POST"], csrf=True)
@@ -172,7 +172,7 @@ class AiChatController(http.Controller):
                 or kwargs.get("gemini_model")
             )
 
-            # Check if this user has an aic.admin config
+            # Check if this user has an aic.user config
             admin_rec = self._get_aic_admin_for_current_user()
             is_ai_user = bool(admin_rec)
 

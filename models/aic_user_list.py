@@ -44,16 +44,16 @@ class AicGeminiList(models.Model):
     ]
 
 
-class AicAdmin(models.Model):
+class AicUser(models.Model):
     """
     Per-user AI chat configuration.
 
     One record per user, with child lines defining per-Gemini-model limits.
     """
 
-    _name = "aic.admin"
+    _name = "aic.user"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "Chat Admin"
+    _description = "AI Chat user"
     _rec_name = "aic_user_id"
     _order = "aic_user_id"
 

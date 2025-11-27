@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- =====================================================
-         aic.admin – Form View
+         aic.user – Form View
          ===================================================== -->
 
-    <record id="aic_admin_view_form" model="ir.ui.view">
-        <field name="name">aic.admin.form</field>
-        <field name="model">aic.admin</field>
+    <record id="aic_user_view_form" model="ir.ui.view">
+        <field name="name">aic.user.form</field>
+        <field name="model">aic.user</field>
         <field name="arch" type="xml">
             <form string="AI Chat Admin">
                 <sheet>
@@ -46,12 +46,12 @@
     </record>
 
     <!-- =====================================================
-         aic.admin – Tree View
+         aic.user – Tree View
          ===================================================== -->
 
-    <record id="aic_admin_view_tree" model="ir.ui.view">
-        <field name="name">aic.admin.tree</field>
-        <field name="model">aic.admin</field>
+    <record id="aic_user_view_tree" model="ir.ui.view">
+        <field name="name">aic.user.tree</field>
+        <field name="model">aic.user</field>
         <field name="arch" type="xml">
             <tree string="AI Chat Admin" decoration-muted="not active">
                 <field name="active"/>
@@ -62,12 +62,12 @@
     </record>
 
     <!-- =====================================================
-         aic.admin – Search View
+         aic.user – Search View
          ===================================================== -->
 
-    <record id="aic_admin_view_search" model="ir.ui.view">
-        <field name="name">aic.admin.search</field>
-        <field name="model">aic.admin</field>
+    <record id="aic_user_view_search" model="ir.ui.view">
+        <field name="name">aic.user.search</field>
+        <field name="model">aic.user</field>
         <field name="arch" type="xml">
             <search string="AI Chat Admin">
                 <field name="aic_user_id"/>
@@ -82,15 +82,15 @@
     </record>
 
     <!-- =====================================================
-         Action – Open aic.admin
+         Action – Open aic.user
          ===================================================== -->
 
-    <record id="aic_admin_action" model="ir.actions.act_window">
+    <record id="aic_user_action" model="ir.actions.act_window">
         <field name="name">AI Chat Admin</field>
-        <field name="res_model">aic.admin</field>
+        <field name="res_model">aic.user</field>
         <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="aic_admin_view_tree"/>
-        <field name="search_view_id" ref="aic_admin_view_search"/>
+        <field name="view_id" ref="aic_user_view_tree"/>
+        <field name="search_view_id" ref="aic_user_view_search"/>
         <field name="help" type="html">
             <p>
                 Configure which users can use the AI chat and define
@@ -106,7 +106,7 @@
     <menuitem id="aic_menu_ai_admin"
               name="User Limits"
               parent="aic_menu_ai_root"
-              action="aic_admin_action"
+              action="aic_user_action"
               sequence="10"
               groups="group_ai_chat_admin"/>
 </odoo>
