@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <data>
+        <menuitem name="Ai Chat" id="aic_menu_ai_root" web_icon="website_ai_chat_min,static/img/icon.png" groups="group_ai_chat_use"/>
+    </data>
+</odoo>
