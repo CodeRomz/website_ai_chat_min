@@ -68,11 +68,11 @@ class AiChatController(http.Controller):
 
     def _get_ai_config(self):
         """
-        Return API key and File Store ID as saved via res.config.settings.
+        Return API key and File Search store name from ir.config_parameter.
 
-        Assumes fields are stored in ir.config_parameter as:
+        Expected keys in ir.config_parameter:
           - website_ai_chat_min.ai_api_key
-          - website_ai_chat_min.file_store_id
+          - website_ai_chat_min.file_store_id   (File Search store name)
         """
         try:
             icp = request.env["ir.config_parameter"].sudo()
@@ -97,20 +97,16 @@ class AiChatController(http.Controller):
         Return per-model limits for the current user.
 
         One user can have multiple lines (one per Gemini model).
-        This helper:
-          * Always returns a summary of ALL configured models
-            (for feeding the frontend model chips).
-          * Returns the limits for a specific model if `model_name` is set,
-            using aic.user.get_user_model_limits().
-          * If `model_name` is empty, falls back to the first active line.
+
+        - Always returns a list of all models for the UI chips (all_models).
+        - If model_name is provided, uses aic.user.get_user_model_limits(user, model).
+        - If not, falls back to the first active line.
 
         :param model_name: Gemini model string chosen on the UI
-        :return: dict with keys:
-            - requested_model_name  (raw from UI, normalized)
-            - model_name            (effective, allowed model)
-            - prompt_limit
-            - tokens_per_prompt
-            - all_models: list of dicts
+        :return: dict:
+            requested_model_name, model_name,
+            prompt_limit, tokens_per_prompt,
+            all_models (list of dicts)
         """
         requested_model = tools.ustr(model_name or "").strip()
 
@@ -130,7 +126,7 @@ class AiChatController(http.Controller):
         if not aic_user_rec:
             return result
 
-        # Collect all model limits for this user (for UI)
+        # Build list of all models for this user (for chips in frontend)
         all_models = []
         try:
             for line in aic_user_rec.aic_line_ids.filtered(lambda l: l.active):
@@ -159,7 +155,7 @@ class AiChatController(http.Controller):
 
         result["all_models"] = all_models
 
-        # If UI selected a specific model, use aic.user.get_user_model_limits()
+        # If UI requested a specific model, ask aic.user for its limits
         gemini_model = requested_model
         if gemini_model:
             limits = None
@@ -182,11 +178,11 @@ class AiChatController(http.Controller):
                     result["model_name"] = gemini_model
                     result["prompt_limit"] = limits.get("prompt_limit")
                     result["tokens_per_prompt"] = limits.get("tokens_per_prompt")
-            # We do NOT auto-switch to another model if the requested one
-            # is not configured; result["model_name"] stays None in that case.
+
+            # Do not auto-fallback to another model here; keep strict.
             return result
 
-        # No model_name passed at all: fallback = first active line
+        # No model_name supplied → use first active line as default
         try:
             line = aic_user_rec.aic_line_ids.filtered(lambda l: l.active)[:1]
         except Exception as exc:
@@ -223,8 +219,8 @@ class AiChatController(http.Controller):
         """
         Call Google Generative AI (Gemini) with optional File Search tool.
 
-        :param api_key: Google Generative AI API key
-        :param file_store_id: ID used for File Search configuration
+        :param api_key: Gemini API key
+        :param file_store_id: File Search store name (fileSearchStores/...)
         :param model_name: Gemini model identifier (from aic.user line)
         :param prompt: user question (string)
         :param max_output_tokens: per-prompt token cap (from aic.user line)
@@ -254,39 +250,39 @@ class AiChatController(http.Controller):
         except (TypeError, ValueError):
             max_tokens = 512
 
-        generation_config = genai_types.GenerateContentConfig(
-            temperature=0.2,
-            max_output_tokens=max_tokens,
-        )
-
-        # Attach File Search tool if a file_store_id is configured.
-        # Exact mapping of file_store_id to corpora/file store can be refined
-        # based on how you've provisioned File Search in Google Cloud.
+        # Configure File Search tool if a store is specified
         tools = None
         if file_store_id:
             try:
                 tools = [
                     genai_types.Tool(
                         file_search=genai_types.FileSearch(
-                            corpora=[
-                                genai_types.Corpus(name=file_store_id),
-                            ]
+                            file_search_store_names=[file_store_id]
                         )
                     )
                 ]
             except Exception as exc:
-                # If we fail to prepare File Search, we fall back to pure text chat.
+                # If File Search wiring fails, fall back to plain chat
                 _logger.exception(
-                    "AI Chat: failed to prepare file search tool: %s", exc
+                    "AI Chat: failed to prepare File Search tool: %s", exc
                 )
                 tools = None
+
+        # Build generation config; tools live *inside* GenerateContentConfig
+        config_kwargs = {
+            "temperature": 0.2,
+            "max_output_tokens": max_tokens,
+        }
+        if tools:
+            config_kwargs["tools"] = tools
+
+        generation_config = genai_types.GenerateContentConfig(**config_kwargs)
 
         try:
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
                 config=generation_config,
-                tools=tools,
             )
         except Exception as exc:
             _logger.exception(
@@ -326,9 +322,9 @@ class AiChatController(http.Controller):
     )
     def can_load(self, **kwargs):
         """
-        Hook the JS widget calls to decide if it should mount.
+        JS checks this to know if it should mount the chat widget.
 
-        Only users that have an aic.user record are allowed to use the chat.
+        Only users with an active aic.user record are allowed.
         """
         aic_user_rec = self._get_aic_user_for_current_user()
         return {"show": bool(aic_user_rec)}
@@ -344,18 +340,18 @@ class AiChatController(http.Controller):
         """
         Return list of Gemini models and limits for the current user.
 
-        Shape returned to JS:
+        Response shape:
         {
-            "ok": True,
+            "ok": True/False,
             "models": [
                 {
-                    "model_name": "gemini-2.0-flash",
+                    "model_name": "gemini-2.5-flash",
                     "prompt_limit": 20,
                     "tokens_per_prompt": 8192
                 },
                 ...
             ],
-            "default_model": "gemini-2.0-flash"
+            "default_model": "gemini-2.5-flash"
         }
         """
         user = request.env.user if request and request.env else None
@@ -364,7 +360,6 @@ class AiChatController(http.Controller):
 
         aic_user_rec = self._get_aic_user_for_current_user()
         if not aic_user_rec:
-            # User is logged in but not authorized via aic.user
             return {"ok": False, "models": []}
 
         limits_info = self._get_user_model_limits_for_current_user()
@@ -385,17 +380,17 @@ class AiChatController(http.Controller):
     )
     def send(self, question=None, model_name=None, **kwargs):
         """
-        Receive the question from JSON-RPC params and forward it to Gemini.
+        Receive the question from JSON-RPC and forward it to Gemini.
 
-        Frontend may send the selected Gemini model as one of:
+        Frontend may send the selected Gemini model as:
           - model_name
           - gemini_model
           - model
 
-        Steps:
-          * Take the model selected in the frontend chips.
-          * Look up that exact model in aic.user limits.
-          * Use aic.user tokens_per_prompt as max_output_tokens.
+        Flow:
+          * Use the model selected in the frontend.
+          * Validate against aic.user via get_user_model_limits().
+          * Use tokens_per_prompt as max_output_tokens.
           * Use File Search if file_store_id is configured.
         """
         user = request.env.user if request and request.env else None
@@ -432,7 +427,6 @@ class AiChatController(http.Controller):
                 ),
             }
 
-        # Which model did the UI ask for (if any)?
         selected_model_raw = tools.ustr(
             model_name
             or kwargs.get("model_name")
@@ -466,7 +460,6 @@ class AiChatController(http.Controller):
                 max_output_tokens=tokens_per_prompt,
             )
         except UserError as ue:
-            # Surface functional error messages to the user
             msg = tools.ustr(getattr(ue, "name", None) or "").strip()
             if not msg and ue.args:
                 msg = tools.ustr(ue.args[0])
