@@ -158,7 +158,7 @@ class AicUser(models.Model):
 
 class AicUserQuotaLine(models.Model):
     """
-    Per-Gemini-model limits attached to aic.admin.
+    Per-Gemini-model limits attached to aic.user.
     """
 
     _name = "aic.user_quota_line"
@@ -174,13 +174,13 @@ class AicUserQuotaLine(models.Model):
     )
 
     aic_quota_id = fields.Many2one(
-        comodel_name="aic.admin",
-        string="Chat Admin Config",
+        comodel_name="aic.user",          # ✅ must point to aic.user
+        string="AI Chat User Config",
         required=True,
         ondelete="cascade",
         index=True,
         tracking=True,
-        help="The AI chat admin configuration this line belongs to.",
+        help="The AI chat user configuration this line belongs to.",
     )
 
     aic_model_id = fields.Many2one(
@@ -197,10 +197,6 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
-        help=(
-            "Maximum number of prompts the user can send for this model. "
-            "Your chat logic can interpret this as per day, per month, etc."
-        ),
     )
 
     aic_tokens_per_prompt = fields.Integer(
@@ -208,7 +204,6 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
-        help="Maximum allowed LLM tokens per prompt for this model.",
     )
 
     _sql_constraints = [
@@ -222,7 +217,6 @@ class AicUserQuotaLine(models.Model):
 
     @api.constrains("aic_prompt_limit", "aic_tokens_per_prompt")
     def _check_non_negative_limits(self):
-        """Ensure prompt/token limits are not negative."""
         for line in self:
             if line.aic_prompt_limit < 0:
                 raise ValidationError(
@@ -239,3 +233,5 @@ class AicUserQuotaLine(models.Model):
                         model=line.aic_model_id.aic_gemini_model,
                     )
                 )
+
+
