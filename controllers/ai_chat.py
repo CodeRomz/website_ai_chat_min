@@ -62,28 +62,72 @@ class AiChatController(http.Controller):
             )
             return None
 
+    def _get_ai_config(self):
+        """
+        Return API key and File Store ID as saved via res.config.settings.
+
+        Values are stored in ir.config_parameter via config_parameter on fields:
+          - website_ai_chat_min.ai_api_key
+          - website_ai_chat_min.file_store_id
+        """
+        try:
+            icp = request.env["ir.config_parameter"].sudo()
+
+            api_key = (icp.get_param("website_ai_chat_min.ai_api_key") or "").strip()
+            file_store_id = (icp.get_param("website_ai_chat_min.file_store_id") or "").strip()
+
+            # Mask API key in logs so we don't leak the secret
+            masked_key = api_key[:6] + "..." if api_key else ""
+
+            _logger.info(
+                "AI Chat config loaded | api_key_set=%s | api_key_prefix=%s | file_store_id=%s",
+                bool(api_key),
+                masked_key,
+                file_store_id,
+            )
+
+            return {
+                "api_key": api_key,
+                "file_store_id": file_store_id,
+            }
+
+        except Exception as exc:
+            _logger.exception("AI Chat: error while reading AI config: %s", exc)
+            return {
+                "api_key": "",
+                "file_store_id": "",
+            }
+
+
     @http.route( "/ai_chat/can_load", type="json", auth="user", methods=["POST"], csrf=True, )
     def can_load(self, **kwargs):
         # For now: always allow mounting. We'll plug aic.admin checks here later.
         return {"show": True}
 
-    @http.route( "/ai_chat/send", type="json", auth="user", ethods=["POST"], csrf=True, )
+    @http.route("/ai_chat/send", type="json", auth="user", methods=["POST"], csrf=True)
     def send(self, question=None, **kwargs):
         """Receive the question from JSON-RPC params and log it."""
         try:
             q = tools.ustr(question or "").strip()
             user = request.env.user if request and request.env else None
 
-            # New: check if this user has an aic.admin config
+            # Check if this user has an aic.admin config
             admin_rec = self._get_aic_admin_for_current_user()
             is_ai_user = bool(admin_rec)
 
+            # Load AI config (api key + file store id) and log (masked) inside helper
+            ai_config = self._get_ai_config()
+
             _logger.info(
-                "AI Chat question: %r | user_id=%s | has_aic_admin=%s | aic_admin_id=%s",
+                (
+                    "AI Chat question: %r | user_id=%s | has_aic_admin=%s | "
+                    "aic_admin_id=%s | file_store_id=%s"
+                ),
                 q,
                 getattr(user, "id", None),
                 is_ai_user,
                 admin_rec.id if admin_rec else None,
+                ai_config.get("file_store_id"),
             )
 
         except Exception as exc:
@@ -97,3 +141,4 @@ class AiChatController(http.Controller):
             "ok": True,
             "reply": _("Your message has been logged."),
         }
+
