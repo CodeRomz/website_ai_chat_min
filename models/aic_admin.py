@@ -13,13 +13,42 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
+class AicGeminiList(models.Model):
+    """
+    Master data: list of available Gemini model names.
+
+    Example records:
+        - aic_gemini_model = 'gemini-2.0-flash'
+        - aic_gemini_model = 'gemini-2.0-pro'
+    """
+
+    _name = "aic.gemini_list"
+    _inherit = ["mail.activity.mixin", "mail.thread"]
+    _description = "List of Gemini Models"
+    _rec_name = "aic_gemini_model"
+    _order = "aic_gemini_model"
+
+    aic_gemini_model = fields.Char(
+        string="Gemini Model",
+        required=True,
+        tracking=True,
+        help="Gemini model identifier (e.g. 'gemini-2.0-flash-lite').",
+    )
+
+    _sql_constraints = [
+        (
+            "aic_gemini_model_unique",
+            "unique(aic_gemini_model)",
+            "Each Gemini model must be unique in the list.",
+        ),
+    ]
+
+
 class AicAdmin(models.Model):
     """
     Per-user AI chat configuration.
 
-    One record per user, with child lines defining per-model limits.
-    The model name 'aic.admin' is prefixed with 'aic.' to avoid conflicts
-    with other modules.
+    One record per user, with child lines defining per-Gemini-model limits.
     """
 
     _name = "aic.admin"
@@ -49,7 +78,7 @@ class AicAdmin(models.Model):
         comodel_name="aic.user_quota_line",
         inverse_name="aic_quota_id",
         string="Model Limits",
-        help="Per-model AI chat limits for this user.",
+        help="Per-Gemini-model AI chat limits for this user.",
     )
 
     _sql_constraints = [
@@ -63,12 +92,16 @@ class AicAdmin(models.Model):
     @api.model
     def get_user_model_limits(self, user, model_name):
         """
-        Central helper for the chat logic to read limits for a given user+model.
+        Read limits for a given (user, Gemini model).
 
         :param user: res.users record OR integer user_id
-        :param model_name: technical model name (e.g. 'res.partner')
+        :param model_name: Gemini model string,
+                           e.g. 'gemini-2.0-flash-lite'
         :return: dict {'prompt_limit': int, 'tokens_per_prompt': int} or None
         """
+        result = None
+
+        # Normalize user -> ID
         try:
             if isinstance(user, models.BaseModel):
                 aic_user_id = user.id
@@ -82,9 +115,15 @@ class AicAdmin(models.Model):
             )
             return None
 
-        result = None
+        # Normalize model_name -> string (Gemini code)
+        if isinstance(model_name, models.BaseModel) and model_name._name == "aic.gemini_list":
+            gemini_code = model_name.aic_gemini_model
+        else:
+            gemini_code = str(model_name or "").strip()
+
+        line = self.env["aic.user_quota_line"]
         try:
-            if not aic_user_id or not model_name:
+            if not aic_user_id or not gemini_code:
                 return None
 
             admin_rec = self.search(
@@ -94,44 +133,37 @@ class AicAdmin(models.Model):
             if not admin_rec:
                 return None
 
-            # Filter on related technical name for speed.
+            # Match on the Gemini model string stored in aic.gemini_list
             line = admin_rec.aic_line_ids.filtered(
-                lambda l: l.aic_model_technical_name == model_name
-                or l.aic_model_id.model == model_name
+                lambda l: l.aic_model_id
+                and l.aic_model_id.aic_gemini_model == gemini_code
             )[:1]
 
-            if not line:
-                return None
-
-            result = {
-                # External API keys kept generic on purpose
-                "prompt_limit": line.aic_prompt_limit,
-                "tokens_per_prompt": line.aic_tokens_per_prompt,
-            }
         except Exception as exc:
             _logger.exception(
                 "Error fetching AI chat limits for user %s, model %s: %s",
                 aic_user_id,
-                model_name,
+                gemini_code,
                 exc,
             )
-            result = None
+        else:
+            if line:
+                result = {
+                    "prompt_limit": line.aic_prompt_limit,
+                    "tokens_per_prompt": line.aic_tokens_per_prompt,
+                }
         finally:
-            # Kept for future extension (metrics, audit logging, etc.).
             return result
 
 
 class AicUserQuotaLine(models.Model):
     """
-    Per-model limits attached to aic.admin.
-
-    The model name 'aic.user_quota_line' is prefixed with 'aic.' to avoid
-    conflicts with other modules.
+    Per-Gemini-model limits attached to aic.admin.
     """
 
     _name = "aic.user_quota_line"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "AI Chat Per Model Limits"
+    _description = "AI Chat Per Gemini Model Limits"
     _order = "aic_model_id"
 
     active = fields.Boolean(
@@ -152,12 +184,12 @@ class AicUserQuotaLine(models.Model):
     )
 
     aic_model_id = fields.Many2one(
-        string="Model",
+        comodel_name="aic.gemini_list",
+        string="Gemini Model",
         required=True,
-        ondelete="cascade",
+        ondelete="restrict",
         tracking=True,
-        help="Gemini Chat model "
-             "(e.g. 'gemini-2.5-flash-lite').",
+        help="Gemini Chat model (e.g. 'gemini-2.0-flash-lite').",
     )
 
     aic_prompt_limit = fields.Integer(
@@ -183,7 +215,7 @@ class AicUserQuotaLine(models.Model):
         (
             "aic_user_quota_line_unique_model",
             "unique(aic_quota_id, aic_model_id)",
-            "You already defined AI chat limits for this model "
+            "You already defined AI chat limits for this Gemini model "
             "for the selected user.",
         ),
     ]
@@ -196,7 +228,7 @@ class AicUserQuotaLine(models.Model):
                 raise ValidationError(
                     _(
                         "Prompt limit for model '%(model)s' cannot be negative.",
-                        model=line.aic_model_id.display_name,
+                        model=line.aic_model_id.aic_gemini_model,
                     )
                 )
             if line.aic_tokens_per_prompt < 0:
@@ -204,6 +236,6 @@ class AicUserQuotaLine(models.Model):
                     _(
                         "Tokens per prompt for model '%(model)s' "
                         "cannot be negative.",
-                        model=line.aic_model_id.display_name,
+                        model=line.aic_model_id.aic_gemini_model,
                     )
                 )
