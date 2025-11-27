@@ -23,24 +23,6 @@ from google.genai import types  # kept for compatibility if you reference types 
 
 _logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------
-# MIME helpers (explicit types so we never depend on OS mime DB)
-# ---------------------------------------------------------------------
-_MIME_MAP = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".txt": "text/plain",
-    ".md": "text/markdown",
-    # add more if you need them:
-    # ".csv": "text/csv",
-    # ".json": "application/json",
-    # ".xml": "application/xml",
-    # ".zip": "application/zip",
-}
-
-
 
 def _normalize_store(name: str) -> str:
     """Ensure we always use a fully-qualified store resource name."""
@@ -93,18 +75,3 @@ class ResConfigSettings(models.TransientModel):
         help="File Store ID From Gemini",
         size=256,
     )
-
-
-
-    # ---------------------------------------------------------------------
-    # Helpers
-    # ---------------------------------------------------------------------
-    def _resolve_api_key(self) -> str:
-        """Prefer the transient field, then ICP, then the environment."""
-        self.ensure_one()
-        ICP = self.env["ir.config_parameter"].sudo()
-        return (
-            (self.ai_api_key or "").strip()
-            or (ICP.get_param("website_ai_chat_min.ai_api_key") or "").strip()
-            or (os.getenv("GEMINI_API_KEY") or "").strip()
-        )
