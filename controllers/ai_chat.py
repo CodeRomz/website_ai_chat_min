@@ -27,7 +27,7 @@ class AiChatController(http.Controller):
       - log model name, prompt limit, tokens per prompt for the current user.
     """
 
-    def _get_aic_admin_for_current_user(self):
+    def _get_aic_user_for_current_user(self):
         """
         Return the aic.user record for the current request user, or None.
 
@@ -173,7 +173,7 @@ class AiChatController(http.Controller):
             )
 
             # Check if this user has an aic.user config
-            admin_rec = self._get_aic_admin_for_current_user()
+            admin_rec = self._get_aic_user_for_current_user()
             is_ai_user = bool(admin_rec)
 
             # Load AI config (api key + file store id)
@@ -188,8 +188,8 @@ class AiChatController(http.Controller):
 
             _logger.info(
                 (
-                    "AI Chat question: %r | user_id=%s | has_aic_admin=%s | "
-                    "aic_admin_id=%s | model_name=%s | prompt_limit=%s | "
+                    "AI Chat question: %r | user_id=%s | has_aic_user=%s | "
+                    "aic_user_id=%s | model_name=%s | prompt_limit=%s | "
                     "tokens_per_prompt=%s | file_store_id=%s | API_KEY=%s"
                 ),
                 q,

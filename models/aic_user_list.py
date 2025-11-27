@@ -83,7 +83,7 @@ class AicUser(models.Model):
 
     _sql_constraints = [
         (
-            "aic_admin_user_unique",
+            "aic_user_unique",
             "unique(aic_user_id)",
             "There is already an AI chat configuration record for this user.",
         ),
