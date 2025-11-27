@@ -160,14 +160,6 @@ class AicUserQuotaLine(models.Model):
              "(e.g. 'gemini-2.5-flash-lite').",
     )
 
-    aic_model_technical_name = fields.Char(
-        string="Technical Model Name",
-        store=True,
-        readonly=True,
-        help="Cached technical model name for faster lookups "
-             "from the chat logic.",
-    )
-
     aic_prompt_limit = fields.Integer(
         string="Prompt Limit",
         required=True,
