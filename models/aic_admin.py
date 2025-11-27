@@ -152,14 +152,12 @@ class AicUserQuotaLine(models.Model):
     )
 
     aic_model_id = fields.Many2one(
-        comodel_name="ir.model",
         string="Model",
         required=True,
         ondelete="cascade",
-        domain=[("transient", "=", False)],
         tracking=True,
-        help="Odoo business model the user can use in the chat "
-             "(e.g. 'res.partner').",
+        help="Gemini Chat model "
+             "(e.g. 'gemini-2.5-flash-lite').",
     )
 
     aic_model_technical_name = fields.Char(
