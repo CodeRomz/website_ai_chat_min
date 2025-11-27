@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import annotations
 
 from odoo import models, fields, api, tools, _
 from odoo.exceptions import (
@@ -20,9 +19,7 @@ from odoo.http import request
 
 
 class AiChatController(http.Controller):
-    """Minimal AI chat controller.
-
-    Step 1: only capture user question and log it.
+    """Step 1: only capture user question and log it.
     No AI / Gemini / quota logic yet.
     """
 
@@ -34,10 +31,7 @@ class AiChatController(http.Controller):
         csrf=True,
     )
     def can_load(self, **kwargs):
-        """Tell the frontend whether to show the widget.
-
-        For now: always allow. Later we can plug in aic.admin checks here.
-        """
+        # For now: always allow mounting. We'll plug aic.admin later.
         return {"show": True}
 
     @http.route(
@@ -47,17 +41,14 @@ class AiChatController(http.Controller):
         methods=["POST"],
         csrf=True,
     )
-    def send(self, **kwargs):
-        """Receive the question, log it, and return a simple reply."""
+    def send(self, question=None, **kwargs):
+        """Receive the question from JSON-RPC params and log it."""
         try:
-            data = request.jsonrequest or {}
-            params = data.get("params") or {}
-            question = tools.ustr(params.get("question") or "").strip()
+            q = tools.ustr(question or "").strip()
 
-            # Direct logging, no helper, no extra formatting
             _logger.info(
                 "AI Chat question: %r | user_id=%s",
-                question,
+                q,
                 request.env.user.id if request.env.user else None,
             )
 
