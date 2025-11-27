@@ -18,48 +18,14 @@ _logger = logging.getLogger(__name__)
 from odoo import http
 from odoo.http import request
 
-import time
-from typing import Any, Dict
-
 
 class AiChatController(http.Controller):
     """Minimal AI chat controller.
 
-    Step 1: only capture user question and log it in the backend.
+    Step 1: only capture user question and log it.
     No AI / Gemini / quota logic yet.
     """
 
-    # -------------------------------------------------------------------------
-    # Helpers
-    # -------------------------------------------------------------------------
-    def _extract_question(self) -> str:
-        """Extract the `question` string from the JSON-RPC style payload."""
-        data: Dict[str, Any] = request.jsonrequest or {}
-        params: Dict[str, Any] = data.get("params") or {}
-        question = (params.get("question") or "").strip()
-        return question
-
-    def _log_question(self, question: str) -> None:
-        """Log question with basic context (user, partner, timestamp)."""
-        try:
-            user = request.env.user
-            partner = user.partner_id if user else None
-            _logger.info(
-                "AI Chat question logged | user_id=%s name=%s partner_id=%s "
-                "question=%r timestamp=%s",
-                user.id if user else None,
-                user.name if user else "Public",
-                partner.id if partner else None,
-                question,
-                time.strftime("%Y-%m-%d %H:%M:%S"),
-            )
-        except Exception:
-            # We don't want logging failure to crash the route
-            _logger.exception("AI Chat: failed to log question")
-
-    # -------------------------------------------------------------------------
-    # Routes
-    # -------------------------------------------------------------------------
     @http.route(
         "/ai_chat/can_load",
         type="json",
@@ -82,25 +48,27 @@ class AiChatController(http.Controller):
         csrf=True,
     )
     def send(self, **kwargs):
-        """Receive the question, log it, and return a simple echo reply."""
+        """Receive the question, log it, and return a simple reply."""
         try:
-            question = self._extract_question()
+            data = request.jsonrequest or {}
+            params = data.get("params") or {}
+            question = tools.ustr(params.get("question") or "").strip()
 
-            if not question:
-                return {
-                    "ok": False,
-                    "reply": _("Please enter a message."),
-                }
-
-            # Log question in backend logs
-            self._log_question(question)
+            # Direct logging, no helper, no extra formatting
+            _logger.info(
+                "AI Chat question: %r | user_id=%s",
+                question,
+                request.env.user.id if request.env.user else None,
+            )
 
         except Exception as exc:
-            _logger.exception("AI Chat: error while handling request: %s", exc)
+            _logger.exception("AI Chat: error while logging question: %s", exc)
             return {
                 "ok": False,
-                "reply": _(
-                    "Something went wrong while logging your message. "
-                    "Please try again later."
-                ),
+                "reply": _("Error while logging your message."),
             }
+
+        return {
+            "ok": True,
+            "reply": _("Your message has been logged."),
+        }
