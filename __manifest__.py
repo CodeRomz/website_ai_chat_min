@@ -15,7 +15,7 @@
     "website": "https://github.com/CodeRomz",
     "application": True,
     "installable": True,
-    "depends": ["base", "web", "website"],
+    "depends": ["website"],
     "data": [
         "security/security.xml",
         "security/ir.model.access.csv",
@@ -31,6 +31,6 @@
         ],
     },
     "external_dependencies": {
-        "python": ["openai", "google-genai"]
+        "python": ["google-genai"]
     },
 }
