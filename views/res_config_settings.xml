@@ -19,6 +19,23 @@
 
                         <!-- Extra content rendered in the right pane, stacked below -->
                         <div class="mt16">
+                            <label for="website_ai_file_store_id" class="o_light_label mb-1">
+                                Gemini Fire Store ID
+                            </label>
+                            <div class="text-muted mb-1">
+                                File Store ID from Gemini for retrieval-augmented responses or knowledge base..
+                            </div>
+                            <field name="file_store_id"/>
+                        </div>
+                    </setting>
+
+                    <setting string="Gemini System instruction"
+                             help="Global persona/behaviour text sent as system_instruction to Gemini.">
+                        <!-- Main field: used for the setting label & search -->
+                        <field name="aic_gemini_system_instruction" widget="text"/>
+
+                        <!-- Extra content rendered in the right pane, stacked below -->
+                        <div class="mt16">
                             <label for="privacy_url" class="o_light_label mb-1">
                                 Privacy Policy URL
                             </label>
@@ -28,27 +45,6 @@
                             <field name="privacy_url"
                                    placeholder="https://example.com/privacy"
                                    class="w-100"/>
-                        </div>
-                    </setting>
-
-                    <setting id="website_ai_file_store_id"
-                             string="File Store ID"
-                             help="File Store ID from Gemini for retrieval-augmented responses or knowledge base.">
-                        <field name="file_store_id"/>
-                    </setting>
-
-                    <!-- System instruction -->
-                    <setting id="website_ai_gemini_system_instruction"
-                             string="System instruction"
-                             help="Global persona/behaviour text sent as system_instruction to Gemini."
-                             documentation="/developer/reference/user_interface/view_architectures.html#setting-declare-the-setting">
-                        <div class="content-group mt16">
-                            <div class="row">
-                                <div class="col-12">
-                                    <label for="aic_gemini_system_instruction"/>
-                                    <field name="aic_gemini_system_instruction" widget="text"/>
-                                </div>
-                            </div>
                         </div>
                     </setting>
 
