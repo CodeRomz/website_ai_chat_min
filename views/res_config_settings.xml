@@ -19,7 +19,7 @@
 
                         <!-- Extra content rendered in the right pane, stacked below -->
                         <div class="mt16">
-                            <label for="website_ai_file_store_id" class="o_light_label mb-1">
+                            <label for="file_store_id" class="o_light_label mb-1">
                                 Gemini Fire Store ID
                             </label>
                             <div class="text-muted mb-1">
