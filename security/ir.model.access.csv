@@ -2,3 +2,4 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_aic_user_admin,AI Chat User - Admin Access,website_ai_chat_min.model_aic_user,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
 access_aic_user_quota_line_admin,AI Chat User Quota Line - Admin Access,website_ai_chat_min.model_aic_user_quota_line,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
 access_aic_gemini_list_admin,Gemini Model List - Admin Access,website_ai_chat_min.model_aic_gemini_list,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_user_daily_usage,access.aic.user.daily.usage,model_aic_user_daily_usage,website_ai_chat_min.group_ai_chat_admin,1,1,1,1

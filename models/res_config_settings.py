@@ -23,16 +23,6 @@ GEMINI_SAFETY_SELECTION = [
 ]
 
 
-def _normalize_store(name: str) -> str:
-    """Ensure we always use a fully-qualified store resource name."""
-    name = (name or "").strip()
-    if not name:
-        return ""
-    if name.startswith("fileSearchStores/"):
-        return name
-    return f"fileSearchStores/{name}"
-
-
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 

@@ -663,6 +663,7 @@ class AiChatController(http.Controller):
         )
         effective_model = limits.get("model_name")
         max_output_tokens = limits.get("tokens_per_prompt")
+        prompt_limit = limits.get("prompt_limit")
 
         if not effective_model:
             return {
@@ -670,6 +671,37 @@ class AiChatController(http.Controller):
                 "reply": _("The selected model is not configured for your user."),
             }
 
+        # ------------------------------------------------------------------
+        # NEW: enforce daily prompt quota per (aic.user, model, date)
+        # ------------------------------------------------------------------
+        allowed = True
+        try:
+            Usage = request.env["aic.user_daily_usage"].sudo()
+            allowed, usage_rec = Usage.check_and_increment_prompt(
+                aic_user_rec=aic_user_rec,
+                aic_model=effective_model,
+                prompt_limit=prompt_limit,
+            )
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while enforcing daily quota in /ai_chat/send: %s",
+                exc,
+            )
+            # Fail-open: do not block the user if quota enforcement fails.
+            allowed = True
+
+        if not allowed:
+            return {
+                "ok": False,
+                "reply": _(
+                    "You have reached your daily prompt limit for this AI model. "
+                    "Please try again tomorrow or select another model."
+                ),
+            }
+
+        # ------------------------------------------------------------------
+        # Call Gemini with per-prompt output token cap
+        # ------------------------------------------------------------------
         try:
             reply_text = self._call_gemini(
                 api_key=api_key,
@@ -678,6 +710,7 @@ class AiChatController(http.Controller):
                 prompt=q,
                 max_output_tokens=max_output_tokens,
             )
+
         except UserError as ue:
             _logger.warning("AI Chat: user-facing error in /ai_chat/send: %s", ue)
             return {
