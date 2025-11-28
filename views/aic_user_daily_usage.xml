@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- =====================================================
+         aic.user_daily_usage – Tree View (read-only)
+         ===================================================== -->
+
+    <record id="aic_user_daily_usage_view_tree" model="ir.ui.view">
+        <field name="name">aic.user_daily_usage.tree</field>
+        <field name="model">aic.user_daily_usage</field>
+        <field name="arch" type="xml">
+            <!-- Read-only audit view: no create/edit/delete from UI -->
+            <tree string="AI Chat Daily Usage" create="0" edit="0" delete="0">
+                <field name="usage_date"/>
+                <field name="aic_user_id"/>
+                <field name="aic_model_id"/>
+                <field name="prompts_used"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.user_daily_usage – Search View
+         ===================================================== -->
+
+    <record id="aic_user_daily_usage_view_search" model="ir.ui.view">
+        <field name="name">aic.user_daily_usage.search</field>
+        <field name="model">aic.user_daily_usage</field>
+        <field name="arch" type="xml">
+            <search string="AI Chat Daily Usage">
+                <field name="aic_user_id"/>
+                <field name="aic_model_id"/>
+                <field name="usage_date"/>
+
+                <!-- Quick filters -->
+                <filter name="today"
+                        string="Today"
+                        domain="[('usage_date', '=', context_today())]"/>
+                <filter name="last_7_days"
+                        string="Last 7 Days"
+                        domain="[('usage_date', '>=', (context_today() - datetime.timedelta(days=7)))]"/>
+                <filter name="this_month"
+                        string="This Month"
+                        domain="[
+                            ('usage_date', '&gt;=', (context_today().replace(day=1))),
+                            ('usage_date', '&lt;', (context_today().replace(day=1) + relativedelta(months=1)))
+                        ]"/>
+
+                <!-- Group By helpers -->
+                <group expand="0" string="Group By">
+                    <filter name="group_by_user"
+                            string="User"
+                            domain="[]"
+                            context="{'group_by':'aic_user_id'}"/>
+                    <filter name="group_by_model"
+                            string="Model"
+                            domain="[]"
+                            context="{'group_by':'aic_model_id'}"/>
+                    <filter name="group_by_date"
+                            string="Date"
+                            domain="[]"
+                            context="{'group_by':'usage_date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         Window Action – open aic.user_daily_usage
+         ===================================================== -->
+
+    <record id="aic_user_daily_usage_action" model="ir.actions.act_window">
+        <field name="name">Daily Usage</field>
+        <field name="res_model">aic.user_daily_usage</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="aic_user_daily_usage_view_tree"/>
+        <field name="search_view_id" ref="aic_user_daily_usage_view_search"/>
+        <field name="help" type="html">
+            <p>
+                This view shows the number of prompts used per day for each
+                AI Chat user and Gemini model. Records are maintained by the
+                backend quota logic and are read-only.
+            </p>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         Menu – under existing AI root menu
+         ===================================================== -->
+
+    <menuitem id="aic_menu_ai_daily_usage"
+              name="Daily Usage"
+              parent="aic_menu_ai_root"
+              action="aic_user_daily_usage_action"
+              sequence="20"
+              groups="group_ai_chat_admin"/>
+</odoo>

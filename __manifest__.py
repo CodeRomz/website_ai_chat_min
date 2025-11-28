@@ -8,7 +8,7 @@
         - Robust CSRF, group gating, safe DOM rendering
             """,
     "summary": "Minimal AI chat for Website with OpenAI/Gemini, GDPR-friendly (Odoo 17 CE).",
-    "version": "17.0.1.2.0",
+    "version": "17.0.1.3.0",
     "category": "Website",
     "license": "LGPL-3",
     "author": "Romualdo Jr",
@@ -23,6 +23,7 @@
         "views/ai_chat_templates.xml",
         "views/aic_main_menu.xml",
         "views/aic_user_list.xml",
+        "views/aic_user_daily_usage.xml",
     ],
     "assets": {
         "web.assets_frontend": [
