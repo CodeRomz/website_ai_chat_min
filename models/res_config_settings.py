@@ -109,22 +109,24 @@ class ResConfigSettings(models.TransientModel):
     # ---------------------------------------------------------------------
     # Gemini Global Instruction & Public Description
     # ---------------------------------------------------------------------
-    aic_gemini_system_instruction = fields.Text(
+    aic_gemini_system_instruction = fields.Char(
         string="Gemini System Instruction",
         config_parameter="website_ai_chat_min.gemini_system_instruction",
         help=(
             "Optional global system instruction (persona, behaviour, constraints) "
             "sent as system_instruction to Gemini in GenerateContentConfig."
         ),
+        size=4096,  # allow a long persona string
     )
 
-    aic_ai_public_description = fields.Text(
+    aic_ai_public_description = fields.Char(
         string="AI Assistant Description",
         config_parameter="website_ai_chat_min.ai_public_description",
         help=(
             "Optional description of the AI assistant shown in the chat UI. "
             "This does not affect the Gemini call."
         ),
+        size=1024,
     )
 
     # ---------------------------------------------------------------------
