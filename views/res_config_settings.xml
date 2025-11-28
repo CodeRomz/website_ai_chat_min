@@ -12,17 +12,23 @@
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
                     <!-- Core connection -->
-                    <setting id="website_ai_api_key"
-                             string="Gemini API Key"
-                             help="Stored in system parameters; users without technical rights should not see this value."
-                             title="API key used to authenticate requests to Gemini.">
+                    <setting string="Gemini API Key"
+                             help="Stored in system parameters; users without technical rights should not see this value. Optional privacy link is shown below the chat box.">
+                        <!-- Main field: used for the setting label & search -->
                         <field name="ai_api_key" password="True"/>
-                    </setting>
 
-                    <setting id="website_ai_privacy_url"
-                             string="Privacy Policy URL"
-                             help="Optional link displayed below the chat box for legal compliance (GDPR, etc.).">
-                        <field name="privacy_url" placeholder="https://example.com/privacy"/>
+                        <!-- Extra content rendered in the right pane, stacked below -->
+                        <div class="mt16">
+                            <label for="privacy_url" class="o_light_label mb-1">
+                                Privacy Policy URL
+                            </label>
+                            <div class="text-muted mb-1">
+                                Optional link displayed below the chat box for legal compliance (GDPR, etc.).
+                            </div>
+                            <field name="privacy_url"
+                                   placeholder="https://example.com/privacy"
+                                   class="w-100"/>
+                        </div>
                     </setting>
 
                     <setting id="website_ai_file_store_id"
