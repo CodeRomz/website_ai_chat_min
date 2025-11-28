@@ -104,17 +104,39 @@ class AiChatController(http.Controller):
                 "model_name": "gemini-2.5-flash",
                 "prompt_limit": 20,
                 "tokens_per_prompt": 8192,
+                "prompts_used": 3,  # daily usage from aic.user_daily_usage
             }
 
-        This is used exclusively by ``/ai_chat/models`` to render the chips on
-        the frontend. No list of models is ever sent to Gemini.
+        This is used exclusively by ``/ai_chat/models`` to render the selector
+        on the frontend. No list of models is ever sent to Gemini.
         """
         models_list = []
         if not aic_user_rec:
             return models_list
 
         try:
+            # All active quota lines for this AI user
             lines = aic_user_rec.sudo().aic_line_ids.filtered(lambda l: l.active)
+
+            # Preload today's usage per (aic.user, model) into a dict:
+            #   { aic_model_id.id: prompts_used }
+            usage_by_model = {}
+            if lines:
+                Usage = request.env["aic.user_daily_usage"].sudo()
+                usage_date = fields.Date.context_today(Usage)
+                model_ids = [mid for mid in lines.mapped("aic_model_id").ids if mid]
+                if model_ids:
+                    usage_recs = Usage.search(
+                        [
+                            ("aic_user_id", "=", aic_user_rec.id),
+                            ("aic_model_id", "in", model_ids),
+                            ("usage_date", "=", usage_date),
+                        ]
+                    )
+                    usage_by_model = {
+                        rec.aic_model_id.id: rec.prompts_used for rec in usage_recs
+                    }
+
             for line in lines:
                 try:
                     code = (
@@ -129,11 +151,23 @@ class AiChatController(http.Controller):
                 if not code:
                     continue
 
+                # Default to 0 if we have no usage row for this model today
+                prompts_used = 0
+                try:
+                    if line.aic_model_id:
+                        prompts_used = int(
+                            usage_by_model.get(line.aic_model_id.id, 0) or 0
+                        )
+                except Exception:
+                    prompts_used = 0
+
                 models_list.append(
                     {
                         "model_name": code,
                         "prompt_limit": line.aic_prompt_limit,
                         "tokens_per_prompt": line.aic_tokens_per_prompt,
+                        # NEW: daily usage so the UI shows correct remaining prompts
+                        "prompts_used": prompts_used,
                     }
                 )
         except Exception as exc:
@@ -508,7 +542,7 @@ class AiChatController(http.Controller):
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=False,
+        csrf=True,
     )
     def can_load(self, **kwargs):
         """Return whether the AI chat widget should be shown for this user.
@@ -530,7 +564,7 @@ class AiChatController(http.Controller):
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=False,
+        csrf=True,
     )
     def models(self, **kwargs):
         """Return the list of models and default model for the current user.
@@ -596,7 +630,7 @@ class AiChatController(http.Controller):
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=False,
+        csrf=True,
     )
     def send(self, question=None, model_name=None, **kwargs):
         """Send a question to Gemini using the selected model.

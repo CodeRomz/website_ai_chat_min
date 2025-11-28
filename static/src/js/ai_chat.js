@@ -404,28 +404,49 @@
 
   // ---- MODEL USAGE HELPERS (dropdown + dynamic prompt count) ----
 
-  function initModelUsage(models) {
+    function initModelUsage(models) {
+    // Clear previous cache
     for (const key in modelUsage) {
       if (Object.prototype.hasOwnProperty.call(modelUsage, key)) {
         delete modelUsage[key];
       }
     }
+
     if (!Array.isArray(models)) {
       return;
     }
+
     for (const m of models) {
       if (!m || !m.model_name) {
         continue;
       }
+
       const code = m.model_name;
+
+      // total limit from aic.user_quota_line
       const limit =
         typeof m.prompt_limit === "number" ? m.prompt_limit : null;
+
+      // today's used prompts from aic.user_daily_usage (backend)
+      let used = 0;
+      const rawUsed = m.prompts_used;
+
+      if (typeof rawUsed === "number" && !Number.isNaN(rawUsed)) {
+        used = rawUsed;
+      } else if (typeof rawUsed === "string") {
+        const parsed = Number(rawUsed);
+        if (!Number.isNaN(parsed)) {
+          used = parsed;
+        }
+      }
+
       modelUsage[code] = {
         prompt_limit: limit,
-        prompts_used: 0,
+        prompts_used: used,
       };
     }
   }
+
 
   function updatePromptCounterUI() {
     if (!modelLimitLabelEl) {
