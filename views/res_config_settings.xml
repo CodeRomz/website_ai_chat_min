@@ -1,0 +1,77 @@
+<odoo>
+    <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.ai.chat</field>
+        <field name="model">res.config.settings</field>
+
+        <!-- Keep this inherit for Website settings page -->
+        <field name="inherit_id" ref="website.res_config_settings_view_form"/>
+
+        <field name="arch" type="xml">
+            <!-- Append inside Website app (stable anchor in 17.0) -->
+            <xpath expr="//app[@name='website']" position="inside">
+                <block title="AI Chat (Minimal)" name="website_ai_settings"
+                       groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
+
+                    <!-- Existing settings -->
+                    <setting string="API Key"
+                             help="Stored in system parameters; keep secret.">
+                        <field name="ai_api_key" password="True"/>
+                    </setting>
+
+                    <setting string="Privacy Policy URL"
+                             help="Optional link shown below the chat box.">
+                        <field name="privacy_url"/>
+                    </setting>
+
+                    <setting string="File Store ID"
+                             help="File Store ID From Gemini">
+                        <field name="file_store_id"/>
+                    </setting>
+
+                    <!-- New: Gemini generation behaviour -->
+                    <setting string="Gemini Temperature"
+                             help="Controls randomness. 0 = deterministic, 1 = very creative.">
+                        <field name="aic_gemini_temperature"/>
+                    </setting>
+
+                    <setting string="Gemini Top P"
+                             help="Nucleus sampling (top-p). Typical range: 0.8 – 0.95.">
+                        <field name="aic_gemini_top_p"/>
+                    </setting>
+
+                    <setting string="Gemini Top K"
+                             help="Limit number of candidate tokens. 0 = let the model decide.">
+                        <field name="aic_gemini_top_k"/>
+                    </setting>
+
+                    <setting string="Gemini Candidate Count"
+                             help="Number of candidate completions to generate. 1 is recommended.">
+                        <field name="aic_gemini_candidate_count"/>
+                    </setting>
+
+                    <!-- New: per-category safety thresholds -->
+                    <setting string="Harassment safety threshold"
+                             help="Safety threshold for harassment-related content.">
+                        <field name="aic_gemini_safety_harassment"/>
+                    </setting>
+
+                    <setting string="Hate speech safety threshold"
+                             help="Safety threshold for hate speech content.">
+                        <field name="aic_gemini_safety_hate"/>
+                    </setting>
+
+                    <setting string="Sexual content safety threshold"
+                             help="Safety threshold for sexual content.">
+                        <field name="aic_gemini_safety_sexual"/>
+                    </setting>
+
+                    <setting string="Dangerous content safety threshold"
+                             help="Safety threshold for dangerous content.">
+                        <field name="aic_gemini_safety_dangerous"/>
+                    </setting>
+
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

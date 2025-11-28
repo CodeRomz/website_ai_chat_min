@@ -233,6 +233,122 @@ class AiChatController(http.Controller):
         return result
 
     # -------------------------------------------------------------------------
+    # Internal helpers – Gemini config (generation + safety)
+    # -------------------------------------------------------------------------
+
+    def _build_gemini_safety_settings(self, icp):
+        """Build per-category SafetySetting list based on system parameters.
+
+        Each category reads its own dropdown value. If it's 'sdk_default' or
+        empty, we skip it and let the SDK's default apply.
+        """
+        if not genai_types:
+            return None
+
+        settings = []
+        categories = {
+            "HARM_CATEGORY_HARASSMENT": "website_ai_chat_min.gemini_safety_harassment",
+            "HARM_CATEGORY_HATE_SPEECH": "website_ai_chat_min.gemini_safety_hate",
+            "HARM_CATEGORY_SEXUAL_CONTENT": "website_ai_chat_min.gemini_safety_sexual",
+            "HARM_CATEGORY_DANGEROUS_CONTENT": "website_ai_chat_min.gemini_safety_dangerous",
+        }
+
+        for category, param_key in categories.items():
+            try:
+                threshold = (icp.get_param(param_key) or "").strip()
+            except Exception as exc:
+                _logger.exception(
+                    "AI Chat: error while reading safety parameter %s: %s",
+                    param_key,
+                    exc,
+                )
+                continue
+
+            if not threshold or threshold == "sdk_default":
+                # Let SDK defaults handle this category
+                continue
+
+            try:
+                settings.append(
+                    genai_types.SafetySetting(
+                        category=category,
+                        threshold=threshold,
+                    )
+                )
+            except Exception as exc:
+                _logger.warning(
+                    "AI Chat: invalid Gemini SafetySetting for %s (threshold=%s): %s",
+                    category,
+                    threshold,
+                    exc,
+                )
+
+        return settings or None
+
+    def _build_gemini_generation_config(self, max_output_tokens, tools_param):
+        """Build GenerateContentConfig from ir.config_parameter + per-user limits."""
+        if not genai_types:
+            raise UserError(
+                _(
+                    "Google Generative AI Python client is not installed. "
+                    "Please contact your administrator."
+                )
+            )
+
+        icp = request.env["ir.config_parameter"].sudo()
+
+        def _float_param(key, default):
+            value = icp.get_param(key)
+            try:
+                return float(value) if value is not None else default
+            except (TypeError, ValueError):
+                _logger.warning(
+                    "AI Chat: invalid float config %s=%s, using default %s",
+                    key,
+                    value,
+                    default,
+                )
+                return default
+
+        def _int_param(key, default):
+            value = icp.get_param(key)
+            try:
+                return int(value) if value is not None else default
+            except (TypeError, ValueError):
+                _logger.warning(
+                    "AI Chat: invalid int config %s=%s, using default %s",
+                    key,
+                    value,
+                    default,
+                )
+                return default
+
+        temperature = _float_param("website_ai_chat_min.gemini_temperature", 0.2)
+        top_p = _float_param("website_ai_chat_min.gemini_top_p", 0.95)
+        top_k = _int_param("website_ai_chat_min.gemini_top_k", 40)
+        candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
+        safety_settings = self._build_gemini_safety_settings(icp)
+
+        try:
+            generation_config = genai_types.GenerateContentConfig(
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                candidate_count=candidate_count,
+                max_output_tokens=max_output_tokens,
+                tools=tools_param,
+                safety_settings=safety_settings,
+            )
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while building Gemini generation config: %s", exc
+            )
+            # Let caller wrap this in a user-facing error
+            raise
+        else:
+            return generation_config
+
+    # -------------------------------------------------------------------------
     # Internal helpers – Gemini call
     # -------------------------------------------------------------------------
 
@@ -289,10 +405,9 @@ class AiChatController(http.Controller):
                 tools_param = None
 
         try:
-            generation_config = genai_types.GenerateContentConfig(
-                temperature=0.2,
+            generation_config = self._build_gemini_generation_config(
                 max_output_tokens=max_tokens,
-                tools=tools_param,
+                tools_param=tools_param,
             )
 
             client = genai.Client(api_key=api_key)
@@ -330,7 +445,10 @@ class AiChatController(http.Controller):
                 "AI Chat: error while processing Gemini response: %s", exc
             )
             raise UserError(
-                _("Error while processing the AI response. Please contact your administrator.")
+                _(
+                    "Error while processing the AI response. "
+                    "Please contact your administrator."
+                )
             )
 
     # -------------------------------------------------------------------------
@@ -345,7 +463,7 @@ class AiChatController(http.Controller):
         csrf=True,
     )
     def can_load(self, **kwargs):
-        """Return ``{"show": True/False}`` for the frontend widget.
+        """Return ``{\"show\": True/False}`` for the frontend widget.
 
         The widget is only mounted if an active ``aic.user`` record exists for
         the current logged-in user.
