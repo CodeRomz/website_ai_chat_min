@@ -20,7 +20,6 @@
         "security/security.xml",
         "security/ir.model.access.csv",
         "views/res_config_settings.xml",
-        "views/ai_chat_templates.xml",
         "views/aic_main_menu.xml",
         "views/aic_user_list.xml",
         "views/aic_user_daily_usage.xml",
