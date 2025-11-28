@@ -46,9 +46,6 @@ class AiChatController(http.Controller):
         if not user or not user.id:
             return None
 
-        # NEW: enforce group-based access as well
-        # group_ai_chat_admin implies group_ai_chat_user in security.xml,
-        # so checking only group_ai_chat_user is enough for both.
         try:
             if not user.has_group("website_ai_chat_min.group_ai_chat_user"):
                 return None
@@ -125,11 +122,8 @@ class AiChatController(http.Controller):
             return models_list
 
         try:
-            # All active quota lines for this AI user
             lines = aic_user_rec.sudo().aic_line_ids.filtered(lambda l: l.active)
 
-            # Preload today's usage per (aic.user, model) into a dict:
-            #   { aic_model_id.id: prompts_used }
             usage_by_model = {}
             if lines:
                 Usage = request.env["aic.user_daily_usage"].sudo()
@@ -161,7 +155,6 @@ class AiChatController(http.Controller):
                 if not code:
                     continue
 
-                # Default to 0 if we have no usage row for this model today
                 prompts_used = 0
                 try:
                     if line.aic_model_id:
@@ -227,7 +220,6 @@ class AiChatController(http.Controller):
             if not user or not getattr(user, "id", False):
                 return result
 
-            # If the UI selected a model, validate through aic.user helper
             if requested_model_name:
                 try:
                     limits = (
@@ -250,7 +242,6 @@ class AiChatController(http.Controller):
                     prompt_limit = limits.get("prompt_limit")
                     tokens_per_prompt = limits.get("tokens_per_prompt")
 
-            # Fallback: first active model line for this aic.user
             if not effective_model:
                 line = (
                     aic_user_rec.sudo()
@@ -308,8 +299,6 @@ class AiChatController(http.Controller):
             HarmBlockThreshold = genai_types.HarmBlockThreshold
             SafetySetting = genai_types.SafetySetting
 
-            # IMPORTANT: use the correct Gemini categories, including
-            # HARM_CATEGORY_SEXUALLY_EXPLICIT (not HARM_CATEGORY_SEXUAL_CONTENT).
             key_map = {
                 HarmCategory.HARM_CATEGORY_HARASSMENT: (
                     "website_ai_chat_min.gemini_safety_harassment"
@@ -328,11 +317,9 @@ class AiChatController(http.Controller):
             for category_enum, param_key in key_map.items():
                 raw_threshold = (icp.get_param(param_key) or "").strip()
 
-                # Let SDK defaults apply
                 if not raw_threshold or raw_threshold == "sdk_default":
                     continue
 
-                # Convert string (BLOCK_LOW_AND_ABOVE, etc.) to the enum value.
                 try:
                     threshold_enum = getattr(HarmBlockThreshold, raw_threshold)
                 except AttributeError:
@@ -409,14 +396,12 @@ class AiChatController(http.Controller):
         candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
         safety_settings = self._build_gemini_safety_settings(icp)
 
-        # Global system instruction for Gemini (persona / behaviour / constraints)
         system_instruction = (
             icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
         ).strip()
 
         try:
             generation_config = genai_types.GenerateContentConfig(
-                # Only pass system_instruction if non-empty; otherwise let SDK defaults apply.
                 system_instruction=system_instruction or None,
                 temperature=temperature,
                 top_p=top_p,
@@ -430,7 +415,6 @@ class AiChatController(http.Controller):
             _logger.exception(
                 "AI Chat: error while building Gemini generation config: %s", exc
             )
-            # Let caller wrap this in a user-facing error
             raise
         else:
             return generation_config
@@ -516,7 +500,6 @@ class AiChatController(http.Controller):
                 _("Error while calling the AI model. Please try again later.")
             )
 
-        # Extract plain text reply from the first candidate
         try:
             if not response or not getattr(response, "candidates", None):
                 return ""
@@ -665,12 +648,10 @@ class AiChatController(http.Controller):
                 "reply": _("You must be logged in to use AI chat."),
             }
 
-        # Normalise the question
         q = tools.ustr(question or kwargs.get("question") or "").strip()
         if not q:
             return {"ok": False, "reply": _("Please enter a message.")}
 
-        # Authorisation: must have an active aic.user record
         aic_user_rec = self._get_aic_user_for_current_user()
         if not aic_user_rec:
             return {
@@ -678,7 +659,6 @@ class AiChatController(http.Controller):
                 "reply": _("You are not allowed to use AI chat."),
             }
 
-        # Configuration: API key and File Search store
         config = self._get_ai_config()
         api_key = config.get("api_key") or ""
         file_store_id = config.get("file_store_id") or ""
@@ -691,7 +671,6 @@ class AiChatController(http.Controller):
                 ),
             }
 
-        # Resolve requested model from various possible param names
         selected_model_raw = (
                 model_name
                 or kwargs.get("model_name")
@@ -732,7 +711,7 @@ class AiChatController(http.Controller):
                 getattr(aic_user_rec, "id", None),
                 exc,
             )
-            # Fail-open: allow the prompt but log the issue
+
             allowed = True
 
         if not allowed:
