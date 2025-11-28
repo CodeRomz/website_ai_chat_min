@@ -176,7 +176,6 @@ class AiChatController(http.Controller):
                         "model_name": code,
                         "prompt_limit": line.aic_prompt_limit,
                         "tokens_per_prompt": line.aic_tokens_per_prompt,
-                        # NEW: daily usage so the UI shows correct remaining prompts
                         "prompts_used": prompts_used,
                     }
                 )
