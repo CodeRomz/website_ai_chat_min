@@ -7,6 +7,7 @@
         - Google Gemini backends
         - Robust CSRF, group gating, safe DOM rendering
             """,
+
     "summary": "Minimal AI chat for Website with OpenAI/Gemini, GDPR-friendly (Odoo 17 CE).",
     "version": "17.0.1.3.0",
     "category": "Website",
@@ -16,6 +17,7 @@
     "application": True,
     "installable": True,
     "depends": ["website", "mail"],
+
     "data": [
         "security/security.xml",
         "security/ir.model.access.csv",
@@ -24,15 +26,17 @@
         "views/aic_user_list.xml",
         "views/aic_user_daily_usage.xml",
     ],
+
     "assets": {
-        'web.assets_backend': [
-            'website_ai_chat_min/static/src/scss/aic_settings.scss',
+        "web.assets_backend": [
+            "website_ai_chat_min/static/src/scss/aic_settings.scss",
         ],
         "web.assets_frontend": [
             "website_ai_chat_min/static/src/css/ai_chat.css",
             "website_ai_chat_min/static/src/js/ai_chat.js",
         ],
     },
+
     "external_dependencies": {
         "python": ["google-genai"]
     },
