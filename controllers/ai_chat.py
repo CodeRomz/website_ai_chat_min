@@ -41,31 +41,41 @@ class AiChatController(http.Controller):
     # -------------------------------------------------------------------------
 
     def _get_aic_user_for_current_user(self):
-        """Return the ``aic.user`` record for the current user, or ``None``.
+        """Return the aic.user record for the current logged-in user, or None."""
+        user = request.env.user
+        if not user or not user.id:
+            return None
 
-        Access to the chat is governed by the presence of an *active* ``aic.user``
-        record for the logged-in ``res.users`` record. Security groups control
-        visibility of backend menus but the *runtime* gate is this record.
-        """
-        user = request.env.user if request and request.env else None
+        # NEW: enforce group-based access as well
+        # group_ai_chat_admin implies group_ai_chat_user in security.xml,
+        # so checking only group_ai_chat_user is enough for both.
         try:
-            if not user or not getattr(user, "id", False):
+            if not user.has_group("website_ai_chat_min.group_ai_chat_user"):
                 return None
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while checking AI chat groups for user %s: %s",
+                user.id,
+                exc,
+            )
+            # Fail CLOSED on group check errors: safer than letting everyone in
+            return None
 
-            AicUser = request.env["aic.user"].sudo()
+        AicUser = request.env["aic.user"].sudo()
+        try:
             aic_user_rec = AicUser.search(
                 [("aic_user_id", "=", user.id), ("active", "=", True)],
                 limit=1,
             )
         except Exception as exc:
             _logger.exception(
-                "AI Chat: error while fetching aic.user for user %s: %s",
-                getattr(user, "id", None),
+                "AI Chat: error while searching aic.user for user %s: %s",
+                user.id,
                 exc,
             )
-            return None
-        else:
-            return aic_user_rec or None
+            aic_user_rec = request.env["aic.user"]
+
+        return aic_user_rec or None
 
     def _get_ai_config(self):
         """Return API key and File Search store name from ``ir.config_parameter``.

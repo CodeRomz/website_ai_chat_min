@@ -15,7 +15,7 @@
     "website": "https://github.com/CodeRomz",
     "application": True,
     "installable": True,
-    "depends": ["website"],
+    "depends": ["website", "mail"],
     "data": [
         "security/security.xml",
         "security/ir.model.access.csv",
