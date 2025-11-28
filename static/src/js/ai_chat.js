@@ -1,15 +1,10 @@
 (() => {
   "use strict";
 
-  // Currently selected Gemini model (from dropdown)
+  // Currently selected Gemini model (from chips)
   let selectedModelName = null;
 
-  // Front-end model usage tracker (per model, per browser session)
-  const modelUsage = {};
-  let modelSelectEl = null;
-  let modelLimitLabelEl = null;
-
-  // Per-browser, per-user global chat memory (shared across models)
+  // Per-browser, per-user, per-model chat memory
   const WAICM_STORAGE_PREFIX = "waicm_chat_v1_";
   const WAICM_MAX_HISTORY_MESSAGES = 6; // ~3 user/assistant exchanges
   let chatState = null;
@@ -29,20 +24,23 @@
     return getCookie("frontend_csrf_token") || "";
   }
 
+  // Try to scope storage by Odoo user when available, fall back to session/anon
   function getUserScope() {
-    // Try to scope LS key by logged-in user id; fallback to "anon"
-    const uid = getCookie("frontend_lang_uid") || getCookie("session_id") || "";
-    if (uid) {
-      return uid;
+    try {
+      if (window.odoo && odoo.session_info && typeof odoo.session_info.uid === "number") {
+        return String(odoo.session_info.uid);
+      }
+    } catch (_) {
+      // ignore
     }
     const sid = getCookie("session_id") || "";
     return sid ? `sess_${sid}` : "anon";
   }
 
-  function computeStorageKey() {
+  function computeStorageKey(modelName) {
     const userScope = getUserScope();
-    // Single shared history per user/browser, independent of model
-    return `${WAICM_STORAGE_PREFIX}${userScope}_global`;
+    const safeModel = modelName || "default";
+    return `${WAICM_STORAGE_PREFIX}${userScope}_${safeModel}`;
   }
 
   function saveChatState() {
@@ -50,27 +48,14 @@
       return;
     }
     try {
+      chatState.updated = Date.now();
       window.localStorage.setItem(storageKey, JSON.stringify(chatState));
-    } catch (e) {
-      // Best-effort only; ignore quota errors
-      console.warn("AI Chat: unable to persist chat state", e);
+    } catch (_) {
+      // ignore quota / private mode errors
     }
   }
 
-  function rehydrateBodyFromState() {
-    body.innerHTML = "";
-    if (!chatState || !Array.isArray(chatState.messages)) return;
-    for (const msg of chatState.messages) {
-      if (!msg || typeof msg !== "object") continue;
-      if (msg.role === "user") {
-        appendMessage("user", msg.content || "");
-      } else if (msg.role === "assistant") {
-        appendMessage("bot", msg.content || "");
-      }
-    }
-  }
-
-  function resetChat() {
+  function resetChatForCurrentModel() {
     chatState = {
       version: 1,
       model: selectedModelName || null,
@@ -78,19 +63,19 @@
       created: Date.now(),
       updated: Date.now(),
     };
-    storageKey = computeStorageKey();
+    storageKey = computeStorageKey(selectedModelName || "default");
     saveChatState();
     body.innerHTML = "";
   }
 
-  function loadChatState() {
+  function loadChatStateForModel(modelName) {
     if (!window.localStorage) {
       chatState = null;
       storageKey = null;
       body.innerHTML = "";
       return;
     }
-    storageKey = computeStorageKey();
+    storageKey = computeStorageKey(modelName || "default");
     let parsed = null;
     try {
       const raw = window.localStorage.getItem(storageKey);
@@ -103,7 +88,7 @@
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.messages)) {
       chatState = {
         version: 1,
-        model: selectedModelName || null,
+        model: modelName || null,
         messages: [],
         created: Date.now(),
         updated: Date.now(),
@@ -116,30 +101,39 @@
   }
 
   function pushUserMessageToState(text) {
-    if (!chatState || !Array.isArray(chatState.messages)) return;
+    if (!chatState) {
+      return;
+    }
+    if (!Array.isArray(chatState.messages)) {
+      chatState.messages = [];
+    }
     chatState.messages.push({
       role: "user",
       content: String(text || ""),
       ts: Date.now(),
     });
+    // Keep a bounded history for storage (UI can still scroll older if needed)
     if (chatState.messages.length > 100) {
       chatState.messages = chatState.messages.slice(-100);
     }
-    chatState.updated = Date.now();
     saveChatState();
   }
 
   function pushModelMessageToState(text) {
-    if (!chatState || !Array.isArray(chatState.messages)) return;
+    if (!chatState) {
+      return;
+    }
+    if (!Array.isArray(chatState.messages)) {
+      chatState.messages = [];
+    }
     chatState.messages.push({
-      role: "assistant",
+      role: "model",
       content: String(text || ""),
       ts: Date.now(),
     });
     if (chatState.messages.length > 100) {
       chatState.messages = chatState.messages.slice(-100);
     }
-    chatState.updated = Date.now();
     saveChatState();
   }
 
@@ -168,41 +162,42 @@
     { method = "GET", body = undefined, headers = {}, timeoutMs = 20000 } = {}
   ) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    theTimeout: {
+      var t = setTimeout(() => ctrl.abort(), timeoutMs);
+    }
+    const opts = {
+      method,
+      credentials: "same-origin",
+      signal: ctrl.signal,
+      headers: {
+        "Accept": "application/json",
+        ...(method !== "GET"
+          ? {
+              "Content-Type": "application/json",
+              "X-CSRFToken": getCsrf(),
+              "X-Openerp-CSRF-Token": getCsrf(),
+              ...(getFrontendCsrf() ? { "X-Frontend-CSRF-Token": getFrontendCsrf() } : {}),
+            }
+          : {}),
+        ...headers,
+      },
+    };
+    if (body !== undefined) {
+      opts.body = typeof body === "string" ? body : JSON.stringify(body);
+    }
+    let res;
     try {
-      const finalHeaders = Object.assign(
-        {
-          "Content-Type": "application/json",
-          "X-CSRFToken": getCsrf() || getFrontendCsrf() || "",
-        },
-        headers || {}
-      );
-      const resp = await fetch(url, {
-        method,
-        headers: finalHeaders,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: ctrl.signal,
-        credentials: "same-origin",
-      });
-      const status = resp.status;
-      let data = null;
-      try {
-        data = await resp.json();
-      } catch {
-        data = null;
-      }
-      return { ok: resp.ok, status, data };
-    } catch (err) {
-      if (err && err.name === "AbortError") {
-        return { ok: false, status: 0, data: null };
-      }
-      console.error("AI Chat: fetchJSON error", err);
-      return { ok: false, status: 0, data: null };
+      res = await fetch(url, opts);
     } finally {
       clearTimeout(t);
     }
+    const isJSON = (res.headers.get("content-type") || "").includes("application/json");
+    let data = null;
+    try { data = isJSON ? await res.json() : null; } catch (_) {}
+    return { ok: res.ok, status: res.status, data };
   }
 
+  // ---- MOUNT CHECK ----
   async function canMount() {
     try {
       const { ok, status, data } = await fetchJSON("/ai_chat/can_load", {
@@ -229,19 +224,21 @@
 
   // Logo in the bubble
   const icon = new Image();
-  icon.src = "/website_ai_chat_min/static/description/icon.png";
-  icon.alt = "AI";
-  icon.className = "ai-chat-min__bubble-icon";
+  icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png";
+  icon.alt = "";
+  icon.width = 45;
+  icon.height = 45;
+  icon.decoding = "async";
+  icon.style.display = "block";
+  icon.style.pointerEvents = "none";
+  icon.addEventListener("error", () => { bubble.textContent = "💬"; });
   bubble.appendChild(icon);
 
-  const bubbleLabel = document.createElement("span");
-  bubbleLabel.className = "ai-chat-min__bubble-label";
-  bubbleLabel.textContent = "AI";
-  bubble.appendChild(bubbleLabel);
-
-  // Panel (chat window)
-  const panel = document.createElement("section");
+  // Panel
+  const panel = document.createElement("div");
   panel.className = "ai-chat-min__panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
   panel.hidden = true;
 
   // Header
@@ -292,17 +289,15 @@
   footer.className = "ai-chat-min__footer";
   const input = document.createElement("input");
   input.type = "text";
-  input.className = "ai-chat-min__input";
-  input.placeholder = "Ask Academy AI anything about your courses...";
-  input.setAttribute("autocomplete", "off");
+  input.placeholder = "Type your question...";
   const send = document.createElement("button");
-  send.type = "button";
   send.className = "ai-chat-min__send";
+  send.setAttribute("type", "button");
   send.textContent = "Send";
-
   footer.appendChild(input);
   footer.appendChild(send);
 
+  // Panel layout: header → models → body → footer
   panel.appendChild(header);
   panel.appendChild(modelsBar);
   panel.appendChild(body);
@@ -310,227 +305,140 @@
 
   wrap.appendChild(bubble);
   wrap.appendChild(panel);
-
   document.body.appendChild(wrap);
 
-  // ---- MESSAGE RENDERING ----
-  function appendMessage(role, text) {
+  // ---- RENDER HELPERS ----
+  function appendMessage(who, text) {
     const msg = document.createElement("div");
-    msg.className = `ai-chat-min__msg ai-chat-min__msg--${role}`;
-    const bubble = document.createElement("div");
-    bubble.className = "ai-chat-min__msg-bubble";
-    bubble.textContent = text;
-    msg.appendChild(bubble);
+    msg.className = `ai-chat-min__msg ${who}`;
+    msg.textContent = text;
     body.appendChild(msg);
     body.scrollTop = body.scrollHeight;
-  }
-
-  // Basic markdown-ish rendering for bot UI
-  function renderMarkdownToElement(md, el) {
-    const text = String(md || "");
-    const hasFormatting = /[#*_`]/.test(text) || text.includes("\n");
-    if (!hasFormatting) {
-      el.textContent = text;
-      return;
-    }
-
-    const lines = text.split(/\r?\n/);
-    let buf = [];
-    const flushParagraph = () => {
-      if (!buf.length) return;
-      const p = document.createElement("p");
-      p.textContent = buf.join(" ");
-      el.appendChild(p);
-      buf = [];
-    };
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        flushParagraph();
-        continue;
-      }
-      if (/^#{1,6}\s+/.test(trimmed)) {
-        flushParagraph();
-        const level = Math.min(trimmed.match(/^#+/)[0].length, 4);
-        const h = document.createElement(level === 1 ? "h3" : level === 2 ? "h4" : "h5");
-        h.textContent = trimmed.replace(/^#{1,6}\s+/, "");
-        el.appendChild(h);
-        continue;
-      }
-      if (/^[-*]\s+/.test(trimmed)) {
-        flushParagraph();
-        const ul = document.createElement("ul");
-        const li = document.createElement("li");
-        li.textContent = trimmed.replace(/^[-*]\s+/, "");
-        ul.appendChild(li);
-        el.appendChild(ul);
-        continue;
-      }
-      buf.push(trimmed);
-    }
-    flushParagraph();
   }
 
   function appendBotUI(ui) {
     const msg = document.createElement("div");
-    msg.className = "ai-chat-min__msg ai-chat-min__msg--bot";
+    msg.className = "ai-chat-min__msg bot";
 
-    const bubble = document.createElement("div");
-    bubble.className = "ai-chat-min__msg-bubble ai-chat-min__msg-bubble--rich";
+    // namespaced markdown container
+    const md = document.createElement("div");
+    md.className = "waicm-md waicm-box";
+    md.innerHTML = ui.answer_md || "";
+    msg.appendChild(md);
 
-    if (ui.title) {
-      const h = document.createElement("h3");
-      h.className = "waicm-title";
-      h.textContent = ui.title;
-      bubble.appendChild(h);
+    // citations (optional) — namespaced classes
+    if (Array.isArray(ui.citations) && ui.citations.length) {
+      const c = document.createElement("div");
+      c.className = "waicm-citations";
+      for (const tag of ui.citations.slice(0, 6)) {
+        const chip = document.createElement("span");
+        chip.className = "waicm-chip";
+        chip.textContent = String(tag || "");
+        c.appendChild(chip);
+      }
+      msg.appendChild(c);
     }
 
-    if (ui.summary) {
-      const s = document.createElement("p");
-      s.className = "waicm-summary";
-      s.textContent = ui.summary;
-      bubble.appendChild(s);
-    }
-
-    const answer = document.createElement("div");
-    answer.className = "waicm-answer";
-    renderMarkdownToElement(ui.answer_md || "", answer);
-    bubble.appendChild(answer);
-
+    // suggestions (optional) — namespaced classes
     if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
-      const sugWrap = document.createElement("div");
-      sugWrap.className = "waicm-suggestions";
-      for (const s of ui.suggestions) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "waicm-suggest";
-        btn.textContent = s;
-        btn.addEventListener("click", () => {
-          input.value = s;
+      const s = document.createElement("div");
+      s.className = "waicm-suggestions";
+      for (const sug of ui.suggestions.slice(0, 3)) {
+        const pill = document.createElement("button");
+        pill.className = "waicm-suggest";
+        pill.type = "button";
+        pill.textContent = String(sug || "");
+        pill.addEventListener("click", () => {
+          input.value = String(sug || "");
           input.focus();
         });
-        sugWrap.appendChild(btn);
+        s.appendChild(pill);
       }
-      bubble.appendChild(sugWrap);
+      msg.appendChild(s);
     }
 
-    msg.appendChild(bubble);
     body.appendChild(msg);
     body.scrollTop = body.scrollHeight;
   }
 
-  // ---- MODEL USAGE HELPERS ----
-  function resetModelUsage(models) {
-    for (const key of Object.keys(modelUsage)) {
-      delete modelUsage[key];
+  function rehydrateBodyFromState() {
+    body.innerHTML = "";
+    if (!chatState || !Array.isArray(chatState.messages)) {
+      return;
     }
-    if (Array.isArray(models)) {
-      for (const m of models) {
-        if (!m) continue;
-        const code = m.model_name;
-        if (!code) continue;
-        const limit =
-          typeof m.prompt_limit === "number" ? m.prompt_limit : null;
-        modelUsage[code] = {
-          prompt_limit: limit,
-          prompts_used: 0,
-        };
+    for (const msg of chatState.messages) {
+      if (!msg || typeof msg.content !== "string") continue;
+      if (msg.role === "user") {
+        appendMessage("user", msg.content);
+      } else if (msg.role === "model") {
+        appendBotUI({
+          answer_md: msg.content,
+          citations: [],
+          suggestions: [],
+        });
       }
     }
   }
 
-  function updatePromptCounterUI() {
-    if (!modelLimitLabelEl) return;
-    if (!selectedModelName || !modelUsage[selectedModelName]) {
-      modelLimitLabelEl.textContent = "";
-      return;
-    }
-    const meta = modelUsage[selectedModelName];
-    const limit = meta.prompt_limit;
-    const used = meta.prompts_used || 0;
-
-    if (!limit || limit <= 0) {
-      modelLimitLabelEl.textContent = "Prompts: unlimited";
-    } else {
-      modelLimitLabelEl.textContent = `Prompts: ${used}/${limit} used`;
-    }
-  }
-
-  function incrementModelUsageForCurrentModel() {
-    if (!selectedModelName || !modelUsage[selectedModelName]) return;
-    const meta = modelUsage[selectedModelName];
-    if (!meta.prompt_limit || meta.prompt_limit <= 0) {
-      // unlimited – nothing meaningful to display
-      return;
-    }
-    meta.prompts_used = (meta.prompts_used || 0) + 1;
-    updatePromptCounterUI();
-  }
-
+  // Render model chips + limits from /ai_chat/models
   function renderModels(models, defaultModel) {
     modelsBar.innerHTML = "";
-    modelSelectEl = null;
-    modelLimitLabelEl = null;
 
     if (!Array.isArray(models) || !models.length) {
       modelsBar.style.display = "none";
       selectedModelName = null;
-      // Still keep a shared chat history even if models can't be listed
-      loadChatState();
+      storageKey = null;
+      chatState = null;
+      body.innerHTML = "";
       return;
     }
 
     modelsBar.style.display = "flex";
 
-    resetModelUsage(models);
-
     // Choose default: backend default or first model
     selectedModelName =
       defaultModel || (models[0] && models[0].model_name) || null;
 
-    // Label
-    const labelEl = document.createElement("span");
-    labelEl.className = "ai-chat-min__model-label";
-    labelEl.textContent = "Model";
-
-    // Select
-    const selectEl = document.createElement("select");
-    selectEl.className = "ai-chat-min__model-select";
-
     for (const m of models) {
-      if (!m) continue;
-      const code = m.model_name;
-      if (!code) continue;
-      const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = code;
-      selectEl.appendChild(opt);
+      const code = m.model_name || "";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-chat-min__model";
+
+      const label = document.createElement("div");
+      label.textContent = code || "(no model)";
+      btn.appendChild(label);
+
+      const sub = document.createElement("span");
+      const parts = [];
+      if (typeof m.prompt_limit === "number") {
+        parts.push(`Prompts: ${m.prompt_limit}`);
+      }
+      if (typeof m.tokens_per_prompt === "number") {
+        parts.push(`Tokens: ${m.tokens_per_prompt}`);
+      }
+      sub.textContent = parts.join(" • ");
+      if (sub.textContent) {
+        btn.appendChild(sub);
+      }
+
+      if (selectedModelName && code === selectedModelName) {
+        btn.classList.add("is-active");
+      }
+
+      btn.addEventListener("click", () => {
+        selectedModelName = code || null;
+        for (const child of modelsBar.querySelectorAll(".ai-chat-min__model")) {
+          child.classList.toggle("is-active", child === btn);
+        }
+        loadChatStateForModel(selectedModelName);
+      });
+
+      modelsBar.appendChild(btn);
     }
 
-    if (selectedModelName) {
-      selectEl.value = selectedModelName;
-    }
-
-    // Dynamic prompt counter (left = model, right = usage)
-    const limitEl = document.createElement("span");
-    limitEl.className = "ai-chat-min__model-limit";
-
-    modelSelectEl = selectEl;
-    modelLimitLabelEl = limitEl;
-    updatePromptCounterUI();
-
-    selectEl.addEventListener("change", () => {
-      selectedModelName = selectEl.value || null;
-      updatePromptCounterUI();
-    });
-
-    modelsBar.appendChild(labelEl);
-    modelsBar.appendChild(selectEl);
-    modelsBar.appendChild(limitEl);
-
-    // Load a single shared chat history (independent of model)
-    loadChatState();
+    // Initial chat load for default model
+    loadChatStateForModel(selectedModelName);
   }
 
   // ---- OPEN/CLOSE ----
@@ -544,69 +452,65 @@
 
   // ---- Maximize / Restore ----
   maxBtn.addEventListener("click", () => {
-    const isMax = panel.classList.toggle("ai-chat-min__panel--max");
-    maxBtn.textContent = isMax ? "🗗" : "🗖";
+    const isMax = panel.classList.toggle("is-max");
     if (isMax) {
-      maxBtn.setAttribute("aria-label", "Restore");
+      maxBtn.textContent = "🗗";
       maxBtn.title = "Restore";
+      maxBtn.setAttribute("aria-label", "Restore");
     } else {
-      maxBtn.setAttribute("aria-label", "Maximize");
+      maxBtn.textContent = "🗖";
       maxBtn.title = "Maximize";
+      maxBtn.setAttribute("aria-label", "Maximize");
     }
   });
 
   // ---- New chat / Reset ----
   resetBtn.addEventListener("click", () => {
     const confirmed = window.confirm(
-      "Start a new chat? This will clear the conversation in this browser."
+      "Start a new chat? This will clear the conversation for this model in this browser."
     );
     if (!confirmed) return;
-    resetChat();
+    resetChatForCurrentModel();
   });
 
   // ---- SEND FLOW ----
   async function sendMsg() {
-    const rawText = input.value;
-    const text = String(rawText || "").trim();
-    if (!text) return;
-    if (!selectedModelName) {
-      window.alert("No AI model is available for your account.");
-      return;
-    }
+    const q = (input.value || "").trim();
+    if (!q) return;
 
+    // Append user message to UI + state
+    appendMessage("user", q);
+    pushUserMessageToState(q);
     input.value = "";
-    appendMessage("user", text);
-    pushUserMessageToState(text);
-
-    const prompt = buildPromptWithHistory(text);
-
     send.disabled = true;
-    appendMessage("bot", "Thinking...");
+
+    // Build limited-context prompt for Gemini
+    const fullPrompt = buildPromptWithHistory(q);
+    const payloadQuestion = fullPrompt || q;
 
     try {
-      const payload = {
-        jsonrpc: "2.0",
-        method: "call",
-        params: {
-          question: prompt,
-          model_name: selectedModelName,
-        },
-      };
-
       const { ok, status, data } = await fetchJSON("/ai_chat/send", {
         method: "POST",
-        body: payload,
-        timeoutMs: 60000,
+        body: {
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            question: payloadQuestion,
+            // pass selected Gemini model to backend
+            model_name: selectedModelName,
+          },
+        },
+        timeoutMs: 25000,
       });
 
-      // Remove the "Thinking..." placeholder
-      const last = body.lastElementChild;
-      if (last && last.classList.contains("ai-chat-min__msg--bot")) {
-        body.removeChild(last);
+      // If unauthorized (missing CSRF), hide UI gracefully
+      if (!ok && (status === 401 || status === 403)) {
+        panel.hidden = true;
+        bubble.style.display = "none";
+        return;
       }
 
       const raw = unwrap(data || {});
-
       if (ok && raw && raw.ok) {
         // Your current /ai_chat/send only returns {ok, reply},
         // so we treat reply as markdown content.
@@ -621,8 +525,6 @@
         };
         appendBotUI(ui);
         pushModelMessageToState(ui.answer_md);
-        // Front-end dynamic counter (backend remains authoritative for daily quota)
-        incrementModelUsageForCurrentModel();
       } else {
         const fallback = (raw && raw.reply) || "Network error.";
         appendMessage("bot", fallback);
@@ -647,39 +549,35 @@
   // ---- Mount + Load models ----
   (async () => {
     const { mount, show } = await canMount();
-    if (!mount) {
-      return;
-    }
-    wrap.style.display = show ? "block" : "none";
-    if (!show) {
-      return;
-    }
-
-    // Load per-user Gemini models + limits from /ai_chat/models
-    try {
-      const { ok, status, data } = await fetchJSON("/ai_chat/models", {
-        method: "POST",
-        body: { jsonrpc: "2.0", method: "call", params: {} },
-        timeoutMs: 15000,
-      });
-
-      if (!ok && (status === 401 || status === 403)) {
-        modelsBar.style.display = "none";
-        loadChatState();
+    if (mount) {
+      wrap.style.display = show ? "block" : "none";
+      if (!show) {
         return;
       }
 
-      const raw = unwrap(data || {});
-      if (ok && raw && raw.ok && Array.isArray(raw.models)) {
-        renderModels(raw.models, raw.default_model || null);
-      } else {
+      // Load per-user Gemini models + limits from /ai_chat/models
+      try {
+        const { ok, status, data } = await fetchJSON("/ai_chat/models", {
+          method: "POST",
+          body: { jsonrpc: "2.0", method: "call", params: {} },
+          timeoutMs: 15000,
+        });
+
+        if (!ok && (status === 401 || status === 403)) {
+          modelsBar.style.display = "none";
+          return;
+        }
+
+        const raw = unwrap(data || {});
+        if (ok && raw && raw.ok && Array.isArray(raw.models)) {
+          renderModels(raw.models, raw.default_model || null);
+        } else {
+          modelsBar.style.display = "none";
+        }
+      } catch (e) {
+        console.error("AI Chat: unable to load model limits", e);
         modelsBar.style.display = "none";
-        loadChatState();
       }
-    } catch (e) {
-      console.error("AI Chat: unable to load model limits", e);
-      modelsBar.style.display = "none";
-      loadChatState();
     }
   })();
 })();
