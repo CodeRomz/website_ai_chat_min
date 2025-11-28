@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from odoo import models, fields, api, tools, _
 from odoo.exceptions import (
     UserError,
@@ -106,6 +104,27 @@ class ResConfigSettings(models.TransientModel):
         default=1,
         config_parameter="website_ai_chat_min.gemini_candidate_count",
         help="Number of candidate completions to generate. 1 is recommended for production.",
+    )
+
+    # ---------------------------------------------------------------------
+    # Gemini Global Instruction & Public Description
+    # ---------------------------------------------------------------------
+    aic_gemini_system_instruction = fields.Text(
+        string="Gemini System Instruction",
+        config_parameter="website_ai_chat_min.gemini_system_instruction",
+        help=(
+            "Optional global system instruction (persona, behaviour, constraints) "
+            "sent as system_instruction to Gemini in GenerateContentConfig."
+        ),
+    )
+
+    aic_ai_public_description = fields.Text(
+        string="AI Assistant Description",
+        config_parameter="website_ai_chat_min.ai_public_description",
+        help=(
+            "Optional description of the AI assistant shown in the chat UI. "
+            "This does not affect the Gemini call."
+        ),
     )
 
     # ---------------------------------------------------------------------

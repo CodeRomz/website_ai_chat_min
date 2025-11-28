@@ -329,8 +329,15 @@ class AiChatController(http.Controller):
         candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
         safety_settings = self._build_gemini_safety_settings(icp)
 
+        # NEW: global system instruction for Gemini (persona / behaviour / constraints)
+        system_instruction = (
+                icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
+        ).strip()
+
         try:
             generation_config = genai_types.GenerateContentConfig(
+                # Only pass system_instruction if non-empty; otherwise let SDK defaults apply.
+                system_instruction=system_instruction or None,
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,

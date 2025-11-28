@@ -2,12 +2,9 @@
     <record id="res_config_settings_view_form_inherit_ai" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.ai.chat</field>
         <field name="model">res.config.settings</field>
-
-        <!-- Keep this inherit for Website settings page -->
         <field name="inherit_id" ref="website.res_config_settings_view_form"/>
 
         <field name="arch" type="xml">
-            <!-- Append inside Website app (stable anchor in 17.0) -->
             <xpath expr="//app[@name='website']" position="inside">
                 <block title="AI Chat (Minimal)" name="website_ai_settings"
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
@@ -28,7 +25,19 @@
                         <field name="file_store_id"/>
                     </setting>
 
-                    <!-- New: Gemini generation behaviour -->
+                    <!-- NEW: Global system instruction for Gemini -->
+                    <setting string="System Instruction"
+                             help="Global persona/behaviour text sent as system_instruction to Gemini.">
+                        <field name="aic_gemini_system_instruction" widget="text"/>
+                    </setting>
+
+                    <!-- NEW: Public description for the UI -->
+                    <setting string="AI Assistant Description"
+                             help="Optional description of the AI assistant shown in the chat UI.">
+                        <field name="aic_ai_public_description" widget="text"/>
+                    </setting>
+
+                    <!-- Existing generation behaviour -->
                     <setting string="Gemini Temperature"
                              help="Controls randomness. 0 = deterministic, 1 = very creative.">
                         <field name="aic_gemini_temperature"/>
@@ -49,7 +58,7 @@
                         <field name="aic_gemini_candidate_count"/>
                     </setting>
 
-                    <!-- New: per-category safety thresholds -->
+                    <!-- Existing safety thresholds -->
                     <setting string="Harassment safety threshold"
                              help="Safety threshold for harassment-related content.">
                         <field name="aic_gemini_safety_harassment"/>
