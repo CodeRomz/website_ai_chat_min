@@ -13,19 +13,21 @@
 
                     <!-- Core connection -->
 
-
-                    <setting string="API Key"
+                    <setting id="website_ai_gemini_api_key"
+                             string="Gemini API Key"
                              help="Stored in system parameters; keep secret.">
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="File Store ID"
-                             help="File Store ID from Gemini for retrieval-augmented responses or knowledge base..">
+                    <setting id="website_ai_gemini_file_store"
+                             string="File Store ID"
+                             help="File Store ID from Gemini for retrieval-augmented responses or knowledge base.">
                         <field name="file_store_id"/>
                     </setting>
 
-
-                    <setting string="Gemini System instruction"
+                    <!-- FULL-WIDTH ROW (controlled by SCSS on this id) -->
+                    <setting id="website_ai_gemini_system_instruction"
+                             string="System instruction"
                              help="Global persona/behaviour text sent as system_instruction to Gemini.">
                         <!-- Main field: used for the setting label & search -->
                         <field name="aic_gemini_system_instruction" widget="text"/>
@@ -78,7 +80,6 @@
                                         0 lets the model decide
                                     </div>
                                 </div>
-
                             </div>
                         </div>
                     </setting>

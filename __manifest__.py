@@ -25,6 +25,9 @@
         "views/aic_user_daily_usage.xml",
     ],
     "assets": {
+        'web.assets_backend': [
+            'website_ai_chat_min/static/src/scss/aic_settings.scss',
+        ],
         "web.assets_frontend": [
             "website_ai_chat_min/static/src/css/ai_chat.css",
             "website_ai_chat_min/static/src/js/ai_chat.js",
