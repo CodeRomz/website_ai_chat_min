@@ -29,6 +29,41 @@
     return getCookie("frontend_csrf_token") || "";
   }
 
+    // Safely escape AI output before inserting into the DOM
+  function escapeHtml(text) {
+    if (text === null || text === undefined) {
+      return "";
+    }
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  /**
+   * Render AI answer as safe, minimal HTML:
+   * - Escape all HTML special characters.
+   * - Preserve paragraphs and line breaks.
+   * We deliberately do NOT trust or execute any HTML coming from the model.
+   */
+  function renderSafeAnswerHtml(answerText) {
+    const escaped = escapeHtml(answerText || "");
+    if (!escaped) {
+      return "";
+    }
+    // Convert double newlines into paragraphs, single newlines into <br>
+    const paragraphs = escaped.split(/\n{2,}/);
+    const htmlParagraphs = [];
+    for (const p of paragraphs) {
+      const withBreaks = p.replace(/\n/g, "<br>");
+      htmlParagraphs.push("<p>" + withBreaks + "</p>");
+    }
+    return htmlParagraphs.join("");
+  }
+
+
   // Try to scope storage by Odoo user when available, fall back to session/anon
   function getUserScope() {
     try {
@@ -345,7 +380,8 @@
     // namespaced markdown container
     const md = document.createElement("div");
     md.className = "waicm-md waicm-box";
-    md.innerHTML = ui.answer_md || "";
+    const safeHtml = renderSafeAnswerHtml(ui.answer_md);
+    md.innerHTML = safeHtml;
     msg.appendChild(md);
 
     // citations (optional)
