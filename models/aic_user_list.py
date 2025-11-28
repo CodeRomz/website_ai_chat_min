@@ -116,7 +116,10 @@ class AicUser(models.Model):
             return None
 
         # Normalize model_name -> string (Gemini code)
-        if isinstance(model_name, models.BaseModel) and model_name._name == "aic.gemini_list":
+        if (
+            isinstance(model_name, models.BaseModel)
+            and model_name._name == "aic.gemini_list"
+        ):
             gemini_code = model_name.aic_gemini_model
         else:
             gemini_code = str(model_name or "").strip()
@@ -174,7 +177,7 @@ class AicUserQuotaLine(models.Model):
     )
 
     aic_quota_id = fields.Many2one(
-        comodel_name="aic.user",          # ✅ must point to aic.user
+        comodel_name="aic.user",          # must point to aic.user
         string="AI Chat User Config",
         required=True,
         ondelete="cascade",
@@ -197,6 +200,8 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
+        help="Max prompts per calendar day for this user+model. "
+             "0 or None means no daily limit.",
     )
 
     aic_tokens_per_prompt = fields.Integer(
@@ -204,6 +209,8 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
+        help="Max output tokens per answer for this user+model. "
+             "If 0, a safe default is used in the backend.",
     )
 
     _sql_constraints = [
@@ -233,5 +240,3 @@ class AicUserQuotaLine(models.Model):
                         model=line.aic_model_id.aic_gemini_model,
                     )
                 )
-
-
