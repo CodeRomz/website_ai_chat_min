@@ -36,8 +36,14 @@
                              string="System instruction"
                              help="Global persona/behaviour text sent as system_instruction to Gemini."
                              documentation="/developer/reference/user_interface/view_architectures.html#setting-declare-the-setting">
-                        
-                        <field name="aic_gemini_system_instruction" widget="text"/>
+                        <div class="content-group mt16">
+                            <div class="row">
+                                <div class="col-12">
+                                    <label for="aic_gemini_system_instruction"/>
+                                    <field name="aic_gemini_system_instruction" widget="text"/>
+                                </div>
+                            </div>
+                        </div>
                     </setting>
 
                     <!-- Generation behaviour (grouped) -->
