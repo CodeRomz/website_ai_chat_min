@@ -485,23 +485,30 @@
 
 
   function updatePromptCounterUI() {
-    if (!modelLimitLabelEl) {
-      return;
-    }
-    if (!selectedModelName || !modelUsage[selectedModelName]) {
-      modelLimitLabelEl.textContent = "";
-      return;
-    }
-    const meta = modelUsage[selectedModelName];
-    const limit = meta.prompt_limit;
-    const used = meta.prompts_used || 0;
-
-    if (!limit || limit <= 0) {
-      modelLimitLabelEl.textContent = "Prompts: unlimited";
-    } else {
-      modelLimitLabelEl.textContent = `Prompts: ${used}/${limit} used`;
-    }
+  if (!modelLimitLabelEl) {
+    return;
   }
+
+  // If we don't know the selected model or its metadata, clear the label
+  if (!selectedModelName || !modelUsage[selectedModelName]) {
+    modelLimitLabelEl.textContent = "";
+    return;
+  }
+
+  const meta = modelUsage[selectedModelName];
+  const limit = meta.prompt_limit;
+  const used = meta.prompts_used || 0;
+
+  // Unlimited: show nothing (clean UI, no fake numbers)
+  if (!limit || limit <= 0) {
+    modelLimitLabelEl.textContent = "";
+    return;
+  }
+
+  // Show "8/10" where 8 = used today, 10 = daily limit
+  modelLimitLabelEl.textContent = `${used}/${limit}`;
+}
+
 
   function incrementModelUsageForCurrentModel() {
     if (!selectedModelName || !modelUsage[selectedModelName]) {
