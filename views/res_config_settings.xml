@@ -6,71 +6,103 @@
 
         <field name="arch" type="xml">
             <xpath expr="//app[@name='website']" position="inside">
-                <block title="AI Chat (Minimal)" name="website_ai_settings"
+                <block title="AI Chat (Minimal)"
+                       name="website_ai_settings"
+                       help="Configure Gemini-based AI chat behaviour for this website."
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-                    <!-- Existing settings -->
-                    <setting string="API Key"
-                             help="Stored in system parameters; keep secret.">
+                    <!-- Core connection -->
+                    <setting id="website_ai_api_key"
+                             string="Gemini API Key"
+                             help="Stored in system parameters; users without technical rights should not see this value."
+                             title="API key used to authenticate requests to Gemini.">
                         <field name="ai_api_key" password="True"/>
                     </setting>
 
-                    <setting string="Privacy Policy URL"
-                             help="Optional link shown below the chat box.">
-                        <field name="privacy_url"/>
+                    <setting id="website_ai_privacy_url"
+                             string="Privacy Policy URL"
+                             help="Optional link displayed below the chat box for legal compliance (GDPR, etc.).">
+                        <field name="privacy_url" placeholder="https://example.com/privacy"/>
                     </setting>
 
-                    <setting string="File Store ID"
-                             help="File Store ID From Gemini">
+                    <setting id="website_ai_file_store_id"
+                             string="File Store ID"
+                             help="File Store ID from Gemini for retrieval-augmented responses or knowledge base.">
                         <field name="file_store_id"/>
                     </setting>
 
-                    <!-- NEW: Global system instruction for Gemini -->
-                    <setting string="System Instruction"
-                             help="Global persona/behaviour text sent as system_instruction to Gemini.">
+                    <!-- System instruction -->
+                    <setting id="website_ai_gemini_system_instruction"
+                             string="System instruction"
+                             help="Global persona/behaviour text sent as system_instruction to Gemini."
+                             documentation="/developer/reference/user_interface/view_architectures.html#setting-declare-the-setting">
                         <field name="aic_gemini_system_instruction" widget="text"/>
                     </setting>
 
-                    <!-- Existing generation behaviour -->
-                    <setting string="Gemini Temperature"
-                             help="Controls randomness. 0 = deterministic, 1 = very creative.">
-                        <field name="aic_gemini_temperature"/>
+                    <!-- Generation behaviour (grouped) -->
+                    <setting id="website_ai_gemini_sampling"
+                             string="Generation behaviour"
+                             help="Tune randomness and sampling parameters controlling Gemini’s responses.">
+                        <div class="content-group mt16">
+                            <div class="row">
+                                <div class="col-12 col-lg-3">
+                                    <label for="aic_gemini_temperature"/>
+                                    <field name="aic_gemini_temperature"/>
+                                    <div class="text-muted">
+                                        0 = deterministic, 1 = creative
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-3">
+                                    <label for="aic_gemini_top_p"/>
+                                    <field name="aic_gemini_top_p"/>
+                                    <div class="text-muted">
+                                        Typical range: 0.8 – 0.95
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-3">
+                                    <label for="aic_gemini_top_k"/>
+                                    <field name="aic_gemini_top_k"/>
+                                    <div class="text-muted">
+                                        0 lets the model decide
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-3">
+                                    <label for="aic_gemini_candidate_count"/>
+                                    <field name="aic_gemini_candidate_count"/>
+                                    <div class="text-muted">
+                                        1 recommended in production
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </setting>
 
-                    <setting string="Gemini Top P"
-                             help="Nucleus sampling (top-p). Typical range: 0.8 – 0.95.">
-                        <field name="aic_gemini_top_p"/>
-                    </setting>
-
-                    <setting string="Gemini Top K"
-                             help="Limit number of candidate tokens. 0 = let the model decide.">
-                        <field name="aic_gemini_top_k"/>
-                    </setting>
-
-                    <setting string="Gemini Candidate Count"
-                             help="Number of candidate completions to generate. 1 is recommended.">
-                        <field name="aic_gemini_candidate_count"/>
-                    </setting>
-
-                    <!-- Existing safety thresholds -->
-                    <setting string="Harassment safety threshold"
-                             help="Safety threshold for harassment-related content.">
-                        <field name="aic_gemini_safety_harassment"/>
-                    </setting>
-
-                    <setting string="Hate speech safety threshold"
-                             help="Safety threshold for hate speech content.">
-                        <field name="aic_gemini_safety_hate"/>
-                    </setting>
-
-                    <setting string="Sexual content safety threshold"
-                             help="Safety threshold for sexual content.">
-                        <field name="aic_gemini_safety_sexual"/>
-                    </setting>
-
-                    <setting string="Dangerous content safety threshold"
-                             help="Safety threshold for dangerous content.">
-                        <field name="aic_gemini_safety_dangerous"/>
+                    <!-- Safety thresholds (grouped) -->
+                    <setting id="website_ai_gemini_safety"
+                             string="Safety thresholds"
+                             help="Configure Gemini content safety thresholds for harassment, hate, sexual, and dangerous content.">
+                        <div class="content-group mt16">
+                            <div class="row">
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_safety_harassment"/>
+                                    <field name="aic_gemini_safety_harassment"/>
+                                </div>
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_safety_hate"/>
+                                    <field name="aic_gemini_safety_hate"/>
+                                </div>
+                            </div>
+                            <div class="row mt16">
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_safety_sexual"/>
+                                    <field name="aic_gemini_safety_sexual"/>
+                                </div>
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_safety_dangerous"/>
+                                    <field name="aic_gemini_safety_dangerous"/>
+                                </div>
+                            </div>
+                        </div>
                     </setting>
 
                 </block>
