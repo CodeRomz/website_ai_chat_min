@@ -4,6 +4,12 @@
   // Currently selected Gemini model (from chips)
   let selectedModelName = null;
 
+  // Per-browser, per-user, per-model chat memory
+  const WAICM_STORAGE_PREFIX = "waicm_chat_v1_";
+  const WAICM_MAX_HISTORY_MESSAGES = 6; // ~3 user/assistant exchanges
+  let chatState = null;
+  let storageKey = null;
+
   // Unwrap Odoo JSON-RPC envelopes
   const unwrap = (x) => (x && typeof x === "object" && "result" in x ? x.result : x);
 
@@ -18,13 +24,145 @@
     return getCookie("frontend_csrf_token") || "";
   }
 
+  // Try to scope storage by Odoo user when available, fall back to session/anon
+  function getUserScope() {
+    try {
+      if (window.odoo && odoo.session_info && typeof odoo.session_info.uid === "number") {
+        return String(odoo.session_info.uid);
+      }
+    } catch (_) {
+      // ignore
+    }
+    const sid = getCookie("session_id") || "";
+    return sid ? `sess_${sid}` : "anon";
+  }
+
+  function computeStorageKey(modelName) {
+    const userScope = getUserScope();
+    const safeModel = modelName || "default";
+    return `${WAICM_STORAGE_PREFIX}${userScope}_${safeModel}`;
+  }
+
+  function saveChatState() {
+    if (!window.localStorage || !storageKey || !chatState) {
+      return;
+    }
+    try {
+      chatState.updated = Date.now();
+      window.localStorage.setItem(storageKey, JSON.stringify(chatState));
+    } catch (_) {
+      // ignore quota / private mode errors
+    }
+  }
+
+  function resetChatForCurrentModel() {
+    chatState = {
+      version: 1,
+      model: selectedModelName || null,
+      messages: [],
+      created: Date.now(),
+      updated: Date.now(),
+    };
+    storageKey = computeStorageKey(selectedModelName || "default");
+    saveChatState();
+    body.innerHTML = "";
+  }
+
+  function loadChatStateForModel(modelName) {
+    if (!window.localStorage) {
+      chatState = null;
+      storageKey = null;
+      body.innerHTML = "";
+      return;
+    }
+    storageKey = computeStorageKey(modelName || "default");
+    let parsed = null;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        parsed = JSON.parse(raw);
+      }
+    } catch (_) {
+      parsed = null;
+    }
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.messages)) {
+      chatState = {
+        version: 1,
+        model: modelName || null,
+        messages: [],
+        created: Date.now(),
+        updated: Date.now(),
+      };
+      saveChatState();
+    } else {
+      chatState = parsed;
+    }
+    rehydrateBodyFromState();
+  }
+
+  function pushUserMessageToState(text) {
+    if (!chatState) {
+      return;
+    }
+    if (!Array.isArray(chatState.messages)) {
+      chatState.messages = [];
+    }
+    chatState.messages.push({
+      role: "user",
+      content: String(text || ""),
+      ts: Date.now(),
+    });
+    // Keep a bounded history for storage (UI can still scroll older if needed)
+    if (chatState.messages.length > 100) {
+      chatState.messages = chatState.messages.slice(-100);
+    }
+    saveChatState();
+  }
+
+  function pushModelMessageToState(text) {
+    if (!chatState) {
+      return;
+    }
+    if (!Array.isArray(chatState.messages)) {
+      chatState.messages = [];
+    }
+    chatState.messages.push({
+      role: "model",
+      content: String(text || ""),
+      ts: Date.now(),
+    });
+    if (chatState.messages.length > 100) {
+      chatState.messages = chatState.messages.slice(-100);
+    }
+    saveChatState();
+  }
+
+  function buildPromptWithHistory(question) {
+    const q = String(question || "").trim();
+    if (!q) return "";
+    if (!chatState || !Array.isArray(chatState.messages) || !chatState.messages.length) {
+      return q;
+    }
+
+    const recent = chatState.messages.slice(-WAICM_MAX_HISTORY_MESSAGES);
+    const lines = [];
+    for (const msg of recent) {
+      if (!msg || typeof msg.content !== "string") continue;
+      const prefix = msg.role === "user" ? "User: " : "Assistant: ";
+      lines.push(prefix + msg.content);
+    }
+    lines.push("");
+    lines.push("User: " + q);
+    lines.push("Assistant:");
+    return lines.join("\n");
+  }
+
   async function fetchJSON(
     url,
     { method = "GET", body = undefined, headers = {}, timeoutMs = 20000 } = {}
   ) {
     const ctrl = new AbortController();
-    theTimeout:
-    {
+    theTimeout: {
       var t = setTimeout(() => ctrl.abort(), timeoutMs);
     }
     const opts = {
@@ -109,6 +247,14 @@
   const title = document.createElement("div");
   title.textContent = "Academy Ai";
 
+  // New chat / reset button
+  const resetBtn = document.createElement("button");
+  resetBtn.className = "ai-chat-min__reset";
+  resetBtn.setAttribute("type", "button");
+  resetBtn.setAttribute("aria-label", "New chat");
+  resetBtn.title = "New chat";
+  resetBtn.textContent = "⟲";
+
   // Maximize/Restore button
   const maxBtn = document.createElement("button");
   maxBtn.className = "ai-chat-min__max";
@@ -125,6 +271,7 @@
   closeBtn.textContent = "✕";
 
   header.appendChild(title);
+  header.appendChild(resetBtn);
   header.appendChild(maxBtn);
   header.appendChild(closeBtn);
 
@@ -214,6 +361,25 @@
     body.scrollTop = body.scrollHeight;
   }
 
+  function rehydrateBodyFromState() {
+    body.innerHTML = "";
+    if (!chatState || !Array.isArray(chatState.messages)) {
+      return;
+    }
+    for (const msg of chatState.messages) {
+      if (!msg || typeof msg.content !== "string") continue;
+      if (msg.role === "user") {
+        appendMessage("user", msg.content);
+      } else if (msg.role === "model") {
+        appendBotUI({
+          answer_md: msg.content,
+          citations: [],
+          suggestions: [],
+        });
+      }
+    }
+  }
+
   // Render model chips + limits from /ai_chat/models
   function renderModels(models, defaultModel) {
     modelsBar.innerHTML = "";
@@ -221,6 +387,9 @@
     if (!Array.isArray(models) || !models.length) {
       modelsBar.style.display = "none";
       selectedModelName = null;
+      storageKey = null;
+      chatState = null;
+      body.innerHTML = "";
       return;
     }
 
@@ -262,10 +431,14 @@
         for (const child of modelsBar.querySelectorAll(".ai-chat-min__model")) {
           child.classList.toggle("is-active", child === btn);
         }
+        loadChatStateForModel(selectedModelName);
       });
 
       modelsBar.appendChild(btn);
     }
+
+    // Initial chat load for default model
+    loadChatStateForModel(selectedModelName);
   }
 
   // ---- OPEN/CLOSE ----
@@ -291,13 +464,29 @@
     }
   });
 
+  // ---- New chat / Reset ----
+  resetBtn.addEventListener("click", () => {
+    const confirmed = window.confirm(
+      "Start a new chat? This will clear the conversation for this model in this browser."
+    );
+    if (!confirmed) return;
+    resetChatForCurrentModel();
+  });
+
   // ---- SEND FLOW ----
   async function sendMsg() {
     const q = (input.value || "").trim();
     if (!q) return;
+
+    // Append user message to UI + state
     appendMessage("user", q);
+    pushUserMessageToState(q);
     input.value = "";
     send.disabled = true;
+
+    // Build limited-context prompt for Gemini
+    const fullPrompt = buildPromptWithHistory(q);
+    const payloadQuestion = fullPrompt || q;
 
     try {
       const { ok, status, data } = await fetchJSON("/ai_chat/send", {
@@ -306,7 +495,7 @@
           jsonrpc: "2.0",
           method: "call",
           params: {
-            question: q,
+            question: payloadQuestion,
             // pass selected Gemini model to backend
             model_name: selectedModelName,
           },
@@ -335,8 +524,11 @@
           suggestions: Array.isArray(uiObj.suggestions) ? uiObj.suggestions.slice(0, 3) : [],
         };
         appendBotUI(ui);
+        pushModelMessageToState(ui.answer_md);
       } else {
-        appendMessage("bot", (raw && raw.reply) || "Network error.");
+        const fallback = (raw && raw.reply) || "Network error.";
+        appendMessage("bot", fallback);
+        // Do not push error messages into state to keep context clean
       }
     } catch (e) {
       console.error("AI Chat: send failed", e);

@@ -112,7 +112,8 @@
 
 /* square, centered buttons */
 .waicm .ai-chat-min__max,
-.waicm .ai-chat-min__close {
+.waicm .ai-chat-min__close,
+.waicm .ai-chat-min__reset {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -130,11 +131,21 @@
   opacity: .95;
   transition: transform .12s ease, opacity .12s ease;
 }
+.waicm .ai-chat-min__reset { margin-right: 4px; }
 .waicm .ai-chat-min__max { margin-right: 4px; }
+
 .waicm .ai-chat-min__max:hover,
-.waicm .ai-chat-min__close:hover { opacity: 1; transform: scale(1.08); }
+.waicm .ai-chat-min__close:hover,
+.waicm .ai-chat-min__reset:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
 .waicm .ai-chat-min__max:focus-visible,
-.waicm .ai-chat-min__close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.waicm .ai-chat-min__close:focus-visible,
+.waicm .ai-chat-min__reset:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 
 /* ---------- Body (fills + scroll) ---------- */
 .waicm .ai-chat-min__body {
@@ -243,8 +254,6 @@
     width: auto; height: auto;
   }
 }
-
-
 
 /* ---------- Model Selector (per-user limits) ---------- */
 .waicm .ai-chat-min__models {

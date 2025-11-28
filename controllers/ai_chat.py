@@ -611,6 +611,7 @@ class AiChatController(http.Controller):
 
           * Use the model selected in the frontend.
           * Validate against ``aic.user`` via ``get_user_model_limits()``.
+          * Enforce per-day prompt quota via ``aic.user_daily_usage``.
           * Use ``tokens_per_prompt`` as ``max_output_tokens``.
           * Use File Search if ``file_store_id`` is configured.
         """
@@ -649,10 +650,10 @@ class AiChatController(http.Controller):
 
         # Resolve requested model from various possible param names
         selected_model_raw = (
-            model_name
-            or kwargs.get("model_name")
-            or kwargs.get("gemini_model")
-            or kwargs.get("model")
+                model_name
+                or kwargs.get("model_name")
+                or kwargs.get("gemini_model")
+                or kwargs.get("model")
         )
         selected_model_raw = tools.ustr(selected_model_raw or "").strip()
 
@@ -672,22 +673,23 @@ class AiChatController(http.Controller):
             }
 
         # ------------------------------------------------------------------
-        # NEW: enforce daily prompt quota per (aic.user, model, date)
+        # Enforce daily quota (per aic.user + model + calendar date)
         # ------------------------------------------------------------------
         allowed = True
         try:
             Usage = request.env["aic.user_daily_usage"].sudo()
-            allowed, usage_rec = Usage.check_and_increment_prompt(
+            allowed, _usage_rec = Usage.check_and_increment_prompt(
                 aic_user_rec=aic_user_rec,
                 aic_model=effective_model,
                 prompt_limit=prompt_limit,
             )
         except Exception as exc:
             _logger.exception(
-                "AI Chat: error while enforcing daily quota in /ai_chat/send: %s",
+                "AI Chat: error while checking daily usage for aic.user %s: %s",
+                getattr(aic_user_rec, "id", None),
                 exc,
             )
-            # Fail-open: do not block the user if quota enforcement fails.
+            # Fail-open: allow the prompt but log the issue
             allowed = True
 
         if not allowed:
@@ -700,7 +702,7 @@ class AiChatController(http.Controller):
             }
 
         # ------------------------------------------------------------------
-        # Call Gemini with per-prompt output token cap
+        # Call Gemini
         # ------------------------------------------------------------------
         try:
             reply_text = self._call_gemini(
@@ -710,7 +712,6 @@ class AiChatController(http.Controller):
                 prompt=q,
                 max_output_tokens=max_output_tokens,
             )
-
         except UserError as ue:
             _logger.warning("AI Chat: user-facing error in /ai_chat/send: %s", ue)
             return {
@@ -731,3 +732,4 @@ class AiChatController(http.Controller):
             "ok": True,
             "reply": reply_text,
         }
+
