@@ -256,44 +256,58 @@
 }
 
 /* ---------- Model Selector (per-user limits) ---------- */
+/* Converted from chips → dropdown + dynamic prompt counter */
 .waicm .ai-chat-min__models {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px 4px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--ai-border);
   background: #0b1020;
 }
 
-.waicm .ai-chat-min__model {
-  border: 1px solid var(--ai-border);
-  border-radius: var(--ai-pill);
-  padding: 4px 10px;
-  cursor: pointer;
-  background: rgba(255,255,255,0.02);
-  color: var(--ai-text);
-  font-size: 0.85em;
-  line-height: 1.2;
-  opacity: 0.9;
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease, opacity 0.12s ease;
-}
-
-.waicm .ai-chat-min__model span {
-  display: block;
-  font-size: 0.75em;
+.waicm .ai-chat-min__model-label {
+  font-size: 0.78rem;
   color: var(--ai-subtle);
-  margin-top: 2px;
+  white-space: nowrap;
 }
 
-.waicm .ai-chat-min__model:hover {
-  background: rgba(var(--ai-accent-rgb), 0.12);
-  transform: translateY(-1px);
-  opacity: 1;
+.waicm .ai-chat-min__model-select {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 65%;
+  padding: 6px 10px;
+  border-radius: var(--ai-radius);
+  border: 1px solid var(--ai-border);
+  background: #0d1222;
+  color: var(--ai-text);
+  font-size: 0.85rem;
 }
 
-.waicm .ai-chat-min__model.is-active {
-  border-color: rgba(var(--ai-accent-rgb), 0.85);
-  background: rgba(var(--ai-accent-rgb), 0.18);
-  color: #fff;
-  opacity: 1;
+.waicm .ai-chat-min__model-select:focus-visible {
+  outline: 2px solid var(--ai-accent-strong);
+  outline-offset: 1px;
+}
+
+.waicm .ai-chat-min__model-limit {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--ai-subtle);
+  white-space: nowrap;
+}
+
+/* Mobile: stack the selector nicely */
+@media (max-width: 480px) {
+  .waicm .ai-chat-min__models {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .waicm .ai-chat-min__model-select {
+    max-width: 100%;
+  }
+  .waicm .ai-chat-min__model-limit {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 4px;
+  }
 }

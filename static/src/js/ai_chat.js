@@ -1,10 +1,15 @@
 (() => {
   "use strict";
 
-  // Currently selected Gemini model (from chips)
+  // Currently selected Gemini model (from selector)
   let selectedModelName = null;
 
-  // Per-browser, per-user, per-model chat memory
+  // Front-end prompt usage tracker (per model, per browser session)
+  const modelUsage = {};
+  let modelSelectEl = null;
+  let modelLimitLabelEl = null;
+
+  // Per-browser, per-user GLOBAL chat memory (shared across models)
   const WAICM_STORAGE_PREFIX = "waicm_chat_v1_";
   const WAICM_MAX_HISTORY_MESSAGES = 6; // ~3 user/assistant exchanges
   let chatState = null;
@@ -37,10 +42,10 @@
     return sid ? `sess_${sid}` : "anon";
   }
 
-  function computeStorageKey(modelName) {
+  // GLOBAL chat storage key – independent of model
+  function computeStorageKey() {
     const userScope = getUserScope();
-    const safeModel = modelName || "default";
-    return `${WAICM_STORAGE_PREFIX}${userScope}_${safeModel}`;
+    return `${WAICM_STORAGE_PREFIX}${userScope}_global`;
   }
 
   function saveChatState() {
@@ -55,7 +60,8 @@
     }
   }
 
-  function resetChatForCurrentModel() {
+  // Reset the SINGLE shared chat (all models share same history)
+  function resetChat() {
     chatState = {
       version: 1,
       model: selectedModelName || null,
@@ -63,19 +69,20 @@
       created: Date.now(),
       updated: Date.now(),
     };
-    storageKey = computeStorageKey(selectedModelName || "default");
+    storageKey = computeStorageKey();
     saveChatState();
     body.innerHTML = "";
   }
 
-  function loadChatStateForModel(modelName) {
+  // Load the SINGLE shared chat from localStorage
+  function loadChatState() {
     if (!window.localStorage) {
       chatState = null;
       storageKey = null;
       body.innerHTML = "";
       return;
     }
-    storageKey = computeStorageKey(modelName || "default");
+    storageKey = computeStorageKey();
     let parsed = null;
     try {
       const raw = window.localStorage.getItem(storageKey);
@@ -88,7 +95,7 @@
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.messages)) {
       chatState = {
         version: 1,
-        model: modelName || null,
+        model: selectedModelName || null,
         messages: [],
         created: Date.now(),
         updated: Date.now(),
@@ -102,7 +109,15 @@
 
   function pushUserMessageToState(text) {
     if (!chatState) {
-      return;
+      // initialise lazily if for some reason loadChatState was not called
+      chatState = {
+        version: 1,
+        model: selectedModelName || null,
+        messages: [],
+        created: Date.now(),
+        updated: Date.now(),
+      };
+      storageKey = computeStorageKey();
     }
     if (!Array.isArray(chatState.messages)) {
       chatState.messages = [];
@@ -112,7 +127,7 @@
       content: String(text || ""),
       ts: Date.now(),
     });
-    // Keep a bounded history for storage (UI can still scroll older if needed)
+    // Keep a bounded history for storage
     if (chatState.messages.length > 100) {
       chatState.messages = chatState.messages.slice(-100);
     }
@@ -121,7 +136,14 @@
 
   function pushModelMessageToState(text) {
     if (!chatState) {
-      return;
+      chatState = {
+        version: 1,
+        model: selectedModelName || null,
+        messages: [],
+        created: Date.now(),
+        updated: Date.now(),
+      };
+      storageKey = computeStorageKey();
     }
     if (!Array.isArray(chatState.messages)) {
       chatState.messages = [];
@@ -222,7 +244,7 @@
   bubble.setAttribute("type", "button");
   bubble.setAttribute("aria-label", "CodeRomz");
 
-  // Logo in the bubble
+  // Logo in the bubble (keep your original logo)
   const icon = new Image();
   icon.src = "/website_ai_chat_min/static/src/img/chat_logo.png";
   icon.alt = "";
@@ -326,7 +348,7 @@
     md.innerHTML = ui.answer_md || "";
     msg.appendChild(md);
 
-    // citations (optional) — namespaced classes
+    // citations (optional)
     if (Array.isArray(ui.citations) && ui.citations.length) {
       const c = document.createElement("div");
       c.className = "waicm-citations";
@@ -339,7 +361,7 @@
       msg.appendChild(c);
     }
 
-    // suggestions (optional) — namespaced classes
+    // suggestions (optional)
     if (Array.isArray(ui.suggestions) && ui.suggestions.length) {
       const s = document.createElement("div");
       s.className = "waicm-suggestions";
@@ -380,65 +402,130 @@
     }
   }
 
-  // Render model chips + limits from /ai_chat/models
+  // ---- MODEL USAGE HELPERS (dropdown + dynamic prompt count) ----
+
+  function initModelUsage(models) {
+    for (const key in modelUsage) {
+      if (Object.prototype.hasOwnProperty.call(modelUsage, key)) {
+        delete modelUsage[key];
+      }
+    }
+    if (!Array.isArray(models)) {
+      return;
+    }
+    for (const m of models) {
+      if (!m || !m.model_name) {
+        continue;
+      }
+      const code = m.model_name;
+      const limit =
+        typeof m.prompt_limit === "number" ? m.prompt_limit : null;
+      modelUsage[code] = {
+        prompt_limit: limit,
+        prompts_used: 0,
+      };
+    }
+  }
+
+  function updatePromptCounterUI() {
+    if (!modelLimitLabelEl) {
+      return;
+    }
+    if (!selectedModelName || !modelUsage[selectedModelName]) {
+      modelLimitLabelEl.textContent = "";
+      return;
+    }
+    const meta = modelUsage[selectedModelName];
+    const limit = meta.prompt_limit;
+    const used = meta.prompts_used || 0;
+
+    if (!limit || limit <= 0) {
+      modelLimitLabelEl.textContent = "Prompts: unlimited";
+    } else {
+      modelLimitLabelEl.textContent = `Prompts: ${used}/${limit} used`;
+    }
+  }
+
+  function incrementModelUsageForCurrentModel() {
+    if (!selectedModelName || !modelUsage[selectedModelName]) {
+      return;
+    }
+    const meta = modelUsage[selectedModelName];
+    if (!meta.prompt_limit || meta.prompt_limit <= 0) {
+      // unlimited – no need to track visually
+      return;
+    }
+    meta.prompts_used = (meta.prompts_used || 0) + 1;
+    updatePromptCounterUI();
+  }
+
+  // Render model selector + limits from /ai_chat/models
   function renderModels(models, defaultModel) {
     modelsBar.innerHTML = "";
 
     if (!Array.isArray(models) || !models.length) {
       modelsBar.style.display = "none";
       selectedModelName = null;
-      storageKey = null;
-      chatState = null;
-      body.innerHTML = "";
+      // Still keep a shared chat history even if models can't be listed
+      loadChatState();
       return;
     }
 
     modelsBar.style.display = "flex";
 
+    initModelUsage(models);
+
     // Choose default: backend default or first model
     selectedModelName =
       defaultModel || (models[0] && models[0].model_name) || null;
 
+    // Label on the left
+    const labelEl = document.createElement("span");
+    labelEl.className = "ai-chat-min__model-label";
+    labelEl.textContent = "Model";
+
+    // Dropdown with all models
+    const selectEl = document.createElement("select");
+    selectEl.className = "ai-chat-min__model-select";
+
     for (const m of models) {
-      const code = m.model_name || "";
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ai-chat-min__model";
-
-      const label = document.createElement("div");
-      label.textContent = code || "(no model)";
-      btn.appendChild(label);
-
-      const sub = document.createElement("span");
-      const parts = [];
-      if (typeof m.prompt_limit === "number") {
-        parts.push(`Prompts: ${m.prompt_limit}`);
-      }
-      if (typeof m.tokens_per_prompt === "number") {
-        parts.push(`Tokens: ${m.tokens_per_prompt}`);
-      }
-      sub.textContent = parts.join(" • ");
-      if (sub.textContent) {
-        btn.appendChild(sub);
-      }
-
-      if (selectedModelName && code === selectedModelName) {
-        btn.classList.add("is-active");
-      }
-
-      btn.addEventListener("click", () => {
-        selectedModelName = code || null;
-        for (const child of modelsBar.querySelectorAll(".ai-chat-min__model")) {
-          child.classList.toggle("is-active", child === btn);
-        }
-        loadChatStateForModel(selectedModelName);
-      });
-
-      modelsBar.appendChild(btn);
+      if (!m || !m.model_name) continue;
+      const code = m.model_name;
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = code;
+      selectEl.appendChild(opt);
     }
 
-    // Initial chat load for default model
-    loadChatStateForModel(selectedModelName);
+    // Align selectedModelName with an actual option
+    if (selectedModelName && Array.from(selectEl.options).some(o => o.value === selectedModelName)) {
+      selectEl.value = selectedModelName;
+    } else if (selectEl.options.length) {
+      selectEl.selectedIndex = 0;
+      selectedModelName = selectEl.value;
+    } else {
+      selectedModelName = null;
+    }
+
+    // Dynamic prompt counter on the right
+    const limitEl = document.createElement("span");
+    limitEl.className = "ai-chat-min__model-limit";
+
+    modelSelectEl = selectEl;
+    modelLimitLabelEl = limitEl;
+    updatePromptCounterUI();
+
+    selectEl.addEventListener("change", () => {
+      selectedModelName = selectEl.value || null;
+      updatePromptCounterUI();
+    });
+
+    modelsBar.appendChild(labelEl);
+    modelsBar.appendChild(selectEl);
+    modelsBar.appendChild(limitEl);
+
+    // Load shared chat history (same conversation regardless of model)
+    loadChatState();
   }
 
   // ---- OPEN/CLOSE ----
@@ -464,13 +551,13 @@
     }
   });
 
-  // ---- New chat / Reset ----
+  // ---- New chat / Reset (GLOBAL, not per model) ----
   resetBtn.addEventListener("click", () => {
     const confirmed = window.confirm(
-      "Start a new chat? This will clear the conversation for this model in this browser."
+      "Start a new chat? This will clear the conversation in this browser."
     );
     if (!confirmed) return;
-    resetChatForCurrentModel();
+    resetChat();
   });
 
   // ---- SEND FLOW ----
@@ -512,8 +599,7 @@
 
       const raw = unwrap(data || {});
       if (ok && raw && raw.ok) {
-        // Your current /ai_chat/send only returns {ok, reply},
-        // so we treat reply as markdown content.
+        // Backend currently returns {ok, reply}; treat as markdown content.
         const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
         const answerText = uiObj.answer_md || raw.reply || "";
         const ui = {
@@ -525,6 +611,8 @@
         };
         appendBotUI(ui);
         pushModelMessageToState(ui.answer_md);
+        // Front-end dynamic counter (backend remains authoritative for real quota)
+        incrementModelUsageForCurrentModel();
       } else {
         const fallback = (raw && raw.reply) || "Network error.";
         appendMessage("bot", fallback);
@@ -565,6 +653,8 @@
 
         if (!ok && (status === 401 || status === 403)) {
           modelsBar.style.display = "none";
+          // still allow global chat history, even if models are hidden
+          loadChatState();
           return;
         }
 
@@ -573,10 +663,12 @@
           renderModels(raw.models, raw.default_model || null);
         } else {
           modelsBar.style.display = "none";
+          loadChatState();
         }
       } catch (e) {
         console.error("AI Chat: unable to load model limits", e);
         modelsBar.style.display = "none";
+        loadChatState();
       }
     }
   })();
