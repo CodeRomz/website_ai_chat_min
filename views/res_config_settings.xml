@@ -36,6 +36,7 @@
                              string="System instruction"
                              help="Global persona/behaviour text sent as system_instruction to Gemini."
                              documentation="/developer/reference/user_interface/view_architectures.html#setting-declare-the-setting">
+                        
                         <field name="aic_gemini_system_instruction" widget="text"/>
                     </setting>
 
@@ -45,34 +46,35 @@
                              help="Tune randomness and sampling parameters controlling Gemini’s responses.">
                         <div class="content-group mt16">
                             <div class="row">
-                                <div class="col-12 col-lg-3">
+                                <div class="col-12 col-lg-6">
                                     <label for="aic_gemini_temperature"/>
                                     <field name="aic_gemini_temperature"/>
                                     <div class="text-muted">
                                         0 = deterministic, 1 = creative
                                     </div>
                                 </div>
-                                <div class="col-12 col-lg-3">
-                                    <label for="aic_gemini_top_p"/>
-                                    <field name="aic_gemini_top_p"/>
-                                    <div class="text-muted">
-                                        Typical range: 0.8 – 0.95
-                                    </div>
-                                </div>
-                                <div class="col-12 col-lg-3">
-                                    <label for="aic_gemini_top_k"/>
-                                    <field name="aic_gemini_top_k"/>
-                                    <div class="text-muted">
-                                        0 lets the model decide
-                                    </div>
-                                </div>
-                                <div class="col-12 col-lg-3">
+                                <div class="col-12 col-lg-6">
                                     <label for="aic_gemini_candidate_count"/>
                                     <field name="aic_gemini_candidate_count"/>
                                     <div class="text-muted">
                                         1 recommended in production
                                     </div>
                                 </div>
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_top_p"/>
+                                    <field name="aic_gemini_top_p"/>
+                                    <div class="text-muted">
+                                        Typical range: 0.8 – 0.95
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_gemini_top_k"/>
+                                    <field name="aic_gemini_top_k"/>
+                                    <div class="text-muted">
+                                        0 lets the model decide
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
                     </setting>
