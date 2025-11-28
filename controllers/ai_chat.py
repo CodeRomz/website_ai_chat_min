@@ -12,10 +12,10 @@ from odoo.exceptions import (
 )
 import logging
 
+_logger = logging.getLogger(__name__)
+
 from odoo import http
 from odoo.http import request
-
-_logger = logging.getLogger(__name__)
 
 # google-genai (Gemini) is optional at import time – we guard usage in _call_gemini.
 try:
@@ -81,10 +81,8 @@ class AiChatController(http.Controller):
         file_store_id = ""
         try:
             icp = request.env["ir.config_parameter"].sudo()
-            api_key = (icp.get_param("website_ai_chat_min.ai_api_key") or "").strip()
-            file_store_id = (
-                icp.get_param("website_ai_chat_min.file_store_id") or ""
-            ).strip()
+            api_key = icp.get_param("website_ai_chat_min.ai_api_key") or ""
+            file_store_id = icp.get_param("website_ai_chat_min.file_store_id") or ""
         except Exception as exc:
             _logger.exception("AI Chat: error while reading AI config: %s", exc)
         finally:
@@ -158,14 +156,14 @@ class AiChatController(http.Controller):
         :return: dict with keys:
 
             {
-                "requested_model_name": <raw string from UI or None>,
-                "model_name":          <effective Gemini model or None>,
+                "requested_model_name": "<raw UI model>",
+                "model_name":          "<effective Gemini model>",
                 "prompt_limit":        <int or None>,
                 "tokens_per_prompt":   <int or None>,
             }
         """
         result = {
-            "requested_model_name": tools.ustr(model_name or "").strip() or None,
+            "requested_model_name": None,
             "model_name": None,
             "prompt_limit": None,
             "tokens_per_prompt": None,
@@ -174,37 +172,46 @@ class AiChatController(http.Controller):
         if not aic_user_rec:
             return result
 
-        user = aic_user_rec.sudo().aic_user_id
-        requested = result["requested_model_name"]
+        requested_model_name = tools.ustr(model_name or "").strip() or None
+        result["requested_model_name"] = requested_model_name
+
+        effective_model = None
+        prompt_limit = None
+        tokens_per_prompt = None
 
         try:
-            effective_model = None
-            prompt_limit = None
-            tokens_per_prompt = None
+            user = aic_user_rec.sudo().aic_user_id
+            if not user or not getattr(user, "id", False):
+                return result
 
-            # If the UI specified a model, try to resolve it via the helper on aic.user
-            if requested:
+            # If the UI selected a model, validate through aic.user helper
+            if requested_model_name:
                 try:
-                    limits = aic_user_rec.sudo().get_user_model_limits(user, requested)
+                    limits = (
+                        aic_user_rec.sudo()
+                        .with_context(active_test=False)
+                        .get_user_model_limits(user, requested_model_name)
+                    )
                 except Exception as exc:
                     _logger.exception(
-                        "AI Chat: error in get_user_model_limits for user %s "
-                        "and model %s: %s",
-                        getattr(user, "id", None),
-                        requested,
+                        "AI Chat: error while resolving model %s limits for "
+                        "aic.user %s: %s",
+                        requested_model_name,
+                        getattr(aic_user_rec, "id", None),
                         exc,
                     )
                     limits = None
 
                 if limits:
-                    effective_model = requested
+                    effective_model = requested_model_name
                     prompt_limit = limits.get("prompt_limit")
                     tokens_per_prompt = limits.get("tokens_per_prompt")
 
-            # If no model was requested or resolution failed, fallback to first line
+            # Fallback: first active model line for this aic.user
             if not effective_model:
                 line = (
                     aic_user_rec.sudo()
+                    .with_context(active_test=False)
                     .aic_line_ids.filtered(lambda l: l.active)[:1]
                 )
                 if line:
@@ -237,53 +244,61 @@ class AiChatController(http.Controller):
     # -------------------------------------------------------------------------
 
     def _build_gemini_safety_settings(self, icp):
-        """Build per-category SafetySetting list based on system parameters.
+        """Build a list of SafetySetting objects based on config parameters.
 
-        Each category reads its own dropdown value. If it's 'sdk_default' or
-        empty, we skip it and let the SDK's default apply.
+        Parameters are expected to be stored under the following keys::
+
+            website_ai_chat_min.gemini_safety_harassment
+            website_ai_chat_min.gemini_safety_hate
+            website_ai_chat_min.gemini_safety_sexual
+            website_ai_chat_min.gemini_safety_dangerous
+
+        Each value is a string like ``BLOCK_NONE`` or ``BLOCK_MEDIUM_AND_ABOVE``.
+        If the value is empty or ``sdk_default``, the SDK default is used.
         """
         if not genai_types:
-            return None
+            return []
 
-        settings = []
-        categories = {
-            "HARM_CATEGORY_HARASSMENT": "website_ai_chat_min.gemini_safety_harassment",
-            "HARM_CATEGORY_HATE_SPEECH": "website_ai_chat_min.gemini_safety_hate",
-            "HARM_CATEGORY_SEXUAL_CONTENT": "website_ai_chat_min.gemini_safety_sexual",
-            "HARM_CATEGORY_DANGEROUS_CONTENT": "website_ai_chat_min.gemini_safety_dangerous",
-        }
+        safety_settings = []
+        try:
+            key_map = {
+                "HARM_CATEGORY_HARASSMENT": "website_ai_chat_min.gemini_safety_harassment",
+                "HARM_CATEGORY_HATE_SPEECH": "website_ai_chat_min.gemini_safety_hate",
+                "HARM_CATEGORY_SEXUAL_CONTENT": "website_ai_chat_min.gemini_safety_sexual",
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "website_ai_chat_min.gemini_safety_dangerous",
+            }
 
-        for category, param_key in categories.items():
-            try:
-                threshold = (icp.get_param(param_key) or "").strip()
-            except Exception as exc:
-                _logger.exception(
-                    "AI Chat: error while reading safety parameter %s: %s",
-                    param_key,
-                    exc,
-                )
-                continue
+            for category, param_key in key_map.items():
+                try:
+                    threshold = (icp.get_param(param_key) or "").strip()
+                except Exception:
+                    threshold = ""
 
-            if not threshold or threshold == "sdk_default":
-                # Let SDK defaults handle this category
-                continue
+                if not threshold or threshold == "sdk_default":
+                    # Let the SDK decide the default behaviour for this category.
+                    continue
 
-            try:
-                settings.append(
-                    genai_types.SafetySetting(
+                try:
+                    setting = genai_types.SafetySetting(
                         category=category,
                         threshold=threshold,
                     )
-                )
-            except Exception as exc:
-                _logger.warning(
-                    "AI Chat: invalid Gemini SafetySetting for %s (threshold=%s): %s",
-                    category,
-                    threshold,
-                    exc,
-                )
+                except Exception as exc:
+                    _logger.warning(
+                        "AI Chat: invalid safety setting for %s (%s): %s",
+                        category,
+                        threshold,
+                        exc,
+                    )
+                    continue
 
-        return settings or None
+                safety_settings.append(setting)
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while building Gemini safety settings: %s", exc
+            )
+
+        return safety_settings
 
     def _build_gemini_generation_config(self, max_output_tokens, tools_param):
         """Build GenerateContentConfig from ir.config_parameter + per-user limits."""
@@ -329,9 +344,9 @@ class AiChatController(http.Controller):
         candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
         safety_settings = self._build_gemini_safety_settings(icp)
 
-        # NEW: global system instruction for Gemini (persona / behaviour / constraints)
+        # Global system instruction for Gemini (persona / behaviour / constraints)
         system_instruction = (
-                icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
+            icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
         ).strip()
 
         try:
@@ -373,7 +388,7 @@ class AiChatController(http.Controller):
         if not genai or not genai_types:
             raise UserError(
                 _(
-                    "Google Generative AI Python client is not installed. "
+                    "Google Generative AI Python client is not available. "
                     "Please contact your administrator."
                 )
             )
@@ -383,42 +398,46 @@ class AiChatController(http.Controller):
         if not api_key or not model_name:
             raise UserError(
                 _(
-                    "AI backend is not fully configured. "
-                    "Please contact your administrator."
+                    "AI backend is not fully configured. Please make sure the "
+                    "API key and model are correctly set."
                 )
             )
 
-        # Respect per-model token limit from aic.user
         try:
             max_tokens = int(max_output_tokens) if max_output_tokens else 512
         except (TypeError, ValueError):
             max_tokens = 512
 
-        # Configure File Search tool if a store is specified
         tools_param = None
-        if file_store_id:
-            try:
+        try:
+            file_store_id = tools.ustr(file_store_id or "").strip()
+            if file_store_id:
                 tools_param = [
                     genai_types.Tool(
                         file_search=genai_types.FileSearch(
-                            file_search_store_names=[tools.ustr(file_store_id).strip()]
+                            file_search_store_names=[file_store_id]
                         )
                     )
                 ]
-            except Exception as exc:
-                _logger.exception(
-                    "AI Chat: error while configuring File Search tool: %s", exc
-                )
-                tools_param = None
-
-        try:
-            generation_config = self._build_gemini_generation_config(
-                max_output_tokens=max_tokens,
-                tools_param=tools_param,
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while building File Search tool config: %s", exc
             )
 
-            client = genai.Client(api_key=api_key)
+        generation_config = self._build_gemini_generation_config(
+            max_output_tokens=max_tokens,
+            tools_param=tools_param,
+        )
 
+        try:
+            client = genai.Client(api_key=api_key)
+        except Exception as exc:
+            _logger.exception("AI Chat: error while initialising Gemini client: %s", exc)
+            raise UserError(
+                _("Error while initialising the AI client. Please try again later.")
+            )
+
+        try:
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
@@ -454,12 +473,12 @@ class AiChatController(http.Controller):
             raise UserError(
                 _(
                     "Error while processing the AI response. "
-                    "Please contact your administrator."
+                    "Please contact your administrator if this persists."
                 )
             )
 
     # -------------------------------------------------------------------------
-    # Public JSON routes
+    # Routes
     # -------------------------------------------------------------------------
 
     @http.route(
@@ -467,33 +486,34 @@ class AiChatController(http.Controller):
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=True,
+        csrf=False,
     )
     def can_load(self, **kwargs):
-        """Return ``{\"show\": True/False}`` for the frontend widget.
+        """Return whether the AI chat widget should be shown for this user.
 
-        The widget is only mounted if an active ``aic.user`` record exists for
-        the current logged-in user.
+        This is a lightweight check so the frontend can decide to render the
+        widget. The actual enforcement still happens in ``/ai_chat/send``.
         """
         try:
             aic_user_rec = self._get_aic_user_for_current_user()
-            return {"show": bool(aic_user_rec)}
+            show = bool(aic_user_rec and getattr(aic_user_rec, "id", False))
         except Exception as exc:
             _logger.exception("AI Chat: error in /ai_chat/can_load: %s", exc)
-            # Fail closed – better to hide the widget than to leak errors.
-            return {"show": False}
+            show = False
+
+        return {"show": show}
 
     @http.route(
         "/ai_chat/models",
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=True,
+        csrf=False,
     )
-    def get_models(self, **kwargs):
-        """Return the list of models and the default model for the current user.
+    def models(self, **kwargs):
+        """Return the list of models and default model for the current user.
 
-        Response shape (JSON-RPC ``result`` payload)::
+        Response shape::
 
             {
                 "ok": true/false,
@@ -505,43 +525,63 @@ class AiChatController(http.Controller):
                     },
                     ...
                 ],
-                "default_model": "gemini-2.5-flash" | null,
+                "default_model": "gemini-2.5-flash",
+                "error": "optional error message",
             }
         """
         user = request.env.user if request and request.env else None
         if not user or not getattr(user, "id", False):
-            return {"ok": False, "models": [], "default_model": None}
+            return {
+                "ok": False,
+                "models": [],
+                "default_model": None,
+                "error": _("You must be logged in to use AI chat."),
+            }
 
-        aic_user_rec = self._get_aic_user_for_current_user()
-        if not aic_user_rec:
-            return {"ok": False, "models": [], "default_model": None}
+        try:
+            aic_user_rec = self._get_aic_user_for_current_user()
+            if not aic_user_rec:
+                return {
+                    "ok": False,
+                    "models": [],
+                    "default_model": None,
+                    "error": _("You are not allowed to use AI chat."),
+                }
 
-        models_list = self._build_all_models_for_user(aic_user_rec)
-        limits_info = self._resolve_model_limits_for_user(aic_user_rec, None)
-        default_model = limits_info.get("model_name")
+            models_list = self._build_all_models_for_user(aic_user_rec)
+            limits = self._resolve_model_limits_for_user(aic_user_rec, None)
+            default_model = limits.get("model_name")
 
-        if not default_model and models_list:
-            default_model = models_list[0].get("model_name")
+            if not default_model and models_list:
+                default_model = models_list[0].get("model_name")
 
-        return {
-            "ok": True,
-            "models": models_list,
-            "default_model": default_model,
-        }
+            return {
+                "ok": True,
+                "models": models_list,
+                "default_model": default_model,
+            }
+        except Exception as exc:
+            _logger.exception("AI Chat: error in /ai_chat/models: %s", exc)
+            return {
+                "ok": False,
+                "models": [],
+                "default_model": None,
+                "error": _("Unexpected error while loading AI models."),
+            }
 
     @http.route(
         "/ai_chat/send",
         type="json",
         auth="user",
         methods=["POST"],
-        csrf=True,
+        csrf=False,
     )
     def send(self, question=None, model_name=None, **kwargs):
-        """Receive the question from JSON-RPC and forward it to Gemini.
+        """Send a question to Gemini using the selected model.
 
-        Frontend may send the selected Gemini model using any of these keys:
+        The model can be provided using several parameter names for flexibility:
 
-          * ``model_name``
+          * ``model_name`` (preferred)
           * ``gemini_model``
           * ``model``
 
@@ -572,42 +612,37 @@ class AiChatController(http.Controller):
                 "reply": _("You are not allowed to use AI chat."),
             }
 
-        # Configuration
-        cfg = self._get_ai_config()
-        api_key = cfg.get("api_key") or ""
-        file_store_id = cfg.get("file_store_id") or ""
-        if not tools.ustr(api_key).strip():
-            _logger.warning(
-                "AI Chat: Gemini API key is not configured (website_ai_chat_min.ai_api_key)."
-            )
+        # Configuration: API key and File Search store
+        config = self._get_ai_config()
+        api_key = config.get("api_key") or ""
+        file_store_id = config.get("file_store_id") or ""
+        if not api_key:
             return {
                 "ok": False,
                 "reply": _(
-                    "AI backend is not configured. Please contact your administrator."
+                    "AI backend is not configured. Please set the API key in the "
+                    "Website settings."
                 ),
             }
 
-        # Model coming from the frontend (single choice)
-        selected_model_raw = tools.ustr(
+        # Resolve requested model from various possible param names
+        selected_model_raw = (
             model_name
             or kwargs.get("model_name")
             or kwargs.get("gemini_model")
             or kwargs.get("model")
-            or ""
-        ).strip() or None
-
-        limits_info = self._resolve_model_limits_for_user(
-            aic_user_rec, selected_model_raw
         )
-        effective_model = limits_info.get("model_name")
-        max_output_tokens = limits_info.get("tokens_per_prompt")
+        selected_model_raw = tools.ustr(selected_model_raw or "").strip()
+
+        # Resolve effective model and per-prompt limits
+        limits = self._resolve_model_limits_for_user(
+            aic_user_rec,
+            model_name=selected_model_raw,
+        )
+        effective_model = limits.get("model_name")
+        max_output_tokens = limits.get("tokens_per_prompt")
 
         if not effective_model:
-            _logger.warning(
-                "AI Chat: user %s requested unsupported model %s.",
-                getattr(user, "id", None),
-                selected_model_raw,
-            )
             return {
                 "ok": False,
                 "reply": _("The selected model is not configured for your user."),
@@ -622,15 +657,10 @@ class AiChatController(http.Controller):
                 max_output_tokens=max_output_tokens,
             )
         except UserError as ue:
-            # Extract a clean message for the frontend
-            msg = tools.ustr(getattr(ue, "name", None) or "").strip()
-            if not msg and ue.args:
-                msg = tools.ustr(ue.args[0])
-            if not msg:
-                msg = _("AI backend error.")
+            _logger.warning("AI Chat: user-facing error in /ai_chat/send: %s", ue)
             return {
                 "ok": False,
-                "reply": msg,
+                "reply": tools.ustr(ue.name or ue.args[0] if ue.args else ue),
             }
         except Exception as exc:  # pragma: no cover - safety net
             _logger.exception("AI Chat: unexpected error while calling Gemini: %s", exc)
