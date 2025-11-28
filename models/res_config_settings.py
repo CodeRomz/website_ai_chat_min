@@ -119,16 +119,6 @@ class ResConfigSettings(models.TransientModel):
         size=4096,  # allow a long persona string
     )
 
-    aic_ai_public_description = fields.Char(
-        string="AI Assistant Description",
-        config_parameter="website_ai_chat_min.ai_public_description",
-        help=(
-            "Optional description of the AI assistant shown in the chat UI. "
-            "This does not affect the Gemini call."
-        ),
-        size=1024,
-    )
-
     # ---------------------------------------------------------------------
     # Per-category Gemini Safety Thresholds (one dropdown per category)
     # ---------------------------------------------------------------------

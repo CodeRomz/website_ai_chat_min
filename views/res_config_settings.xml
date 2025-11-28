@@ -31,12 +31,6 @@
                         <field name="aic_gemini_system_instruction" widget="text"/>
                     </setting>
 
-                    <!-- NEW: Public description for the UI -->
-                    <setting string="AI Assistant Description"
-                             help="Optional description of the AI assistant shown in the chat UI.">
-                        <field name="aic_ai_public_description" widget="text"/>
-                    </setting>
-
                     <!-- Existing generation behaviour -->
                     <setting string="Gemini Temperature"
                              help="Controls randomness. 0 = deterministic, 1 = very creative.">
