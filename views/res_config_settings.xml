@@ -46,43 +46,36 @@
                         </div>
                     </setting>
 
-                    <!-- Generation behaviour (grouped) -->
-                    <setting id="website_ai_gemini_sampling"
-                             string="Generation behaviour"
-                             help="Tune randomness and sampling parameters controlling Gemini’s responses.">
-                        <div class="content-group mt16">
-                            <div class="row">
-                                <div class="col-12 col-lg-6">
-                                    <label for="aic_gemini_temperature"/>
-                                    <field name="aic_gemini_temperature"/>
-                                    <div class="text-muted">
-                                        0 = deterministic, 1 = creative
-                                    </div>
+                    <!-- Row 2: FULL-WIDTH custom setting -->
+                    <div class="row mt16 o_settings_container" id="website_ai_gemini_system_instruction_box">
+                        <div class="col-12 o_setting_box">
+                            <div class="o_setting_right_pane">
+                                <label for="aic_gemini_system_instruction" class="o_light_label">
+                                    System instruction
+                                </label>
+                                <div class="text-muted">
+                                    Global persona/behaviour text sent as system_instruction to Gemini.
                                 </div>
-                                <div class="col-12 col-lg-6">
-                                    <label for="aic_gemini_candidate_count"/>
-                                    <field name="aic_gemini_candidate_count"/>
-                                    <div class="text-muted">
-                                        1 recommended in production
-                                    </div>
+
+                                <div class="content-group mt16">
+                                    <field name="aic_gemini_system_instruction" widget="text"/>
                                 </div>
-                                <div class="col-12 col-lg-6">
-                                    <label for="aic_gemini_top_p"/>
-                                    <field name="aic_gemini_top_p"/>
-                                    <div class="text-muted">
-                                        Typical range: 0.8 – 0.95
+
+                                <!-- Privacy URL underneath -->
+                                <div class="mt16">
+                                    <label for="privacy_url" class="o_light_label mb-1">
+                                        Privacy Policy URL
+                                    </label>
+                                    <div class="text-muted mb-1">
+                                        Optional link displayed below the chat box for legal compliance (GDPR, etc.).
                                     </div>
-                                </div>
-                                <div class="col-12 col-lg-6">
-                                    <label for="aic_gemini_top_k"/>
-                                    <field name="aic_gemini_top_k"/>
-                                    <div class="text-muted">
-                                        0 lets the model decide
-                                    </div>
+                                    <field name="privacy_url"
+                                           placeholder="https://example.com/privacy"
+                                           class="w-100"/>
                                 </div>
                             </div>
                         </div>
-                    </setting>
+                    </div>
 
                     <!-- Safety thresholds (grouped) -->
                     <setting id="website_ai_gemini_safety"
