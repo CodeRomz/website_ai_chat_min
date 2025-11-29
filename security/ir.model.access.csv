@@ -5,3 +5,4 @@ access_aic_file_store_id_admin,aic.file_store_id admin,model_aic_file_store_id,w
 access_aic_gemini_system_instruction_admin,aic.gemini_system_instruction admin,model_aic_gemini_system_instruction,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
 access_aic_user_admin,aic.user admin,model_aic_user,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
 access_aic_user_quota_line_admin,aic.user_quota_line admin,model_aic_user_quota_line,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_user_daily_usage_system,aic.user_daily_usage system access,model_aic_user_daily_usage,website_ai_chat_min.group_ai_chat_admin,1,1,1,1

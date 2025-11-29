@@ -489,7 +489,6 @@
     return;
   }
 
-  // If we don't know the selected model or its metadata, clear the label
   if (!selectedModelName || !modelUsage[selectedModelName]) {
     modelLimitLabelEl.textContent = "";
     return;
@@ -499,15 +498,25 @@
   const limit = meta.prompt_limit;
   const used = meta.prompts_used || 0;
 
-  // Unlimited: show nothing (clean UI, no fake numbers)
+  // Unlimited => no label
   if (!limit || limit <= 0) {
     modelLimitLabelEl.textContent = "";
     return;
   }
 
-  // Show "8/10" where 8 = used today, 10 = daily limit
-  modelLimitLabelEl.textContent = `${used}/${limit}`;
+  // remaining = max(limit - used, 0)
+  let remaining = limit - used;
+  if (!Number.isFinite(remaining)) {
+    remaining = 0;
+  }
+  if (remaining < 0) {
+    remaining = 0;
+  }
+
+  // Show "remaining/limit", e.g. "7/10"
+  modelLimitLabelEl.textContent = `${remaining}/${limit}`;
 }
+
 
 
   function incrementModelUsageForCurrentModel() {
