@@ -44,14 +44,13 @@ class AicUser(models.Model):
     )
 
     aic_api_key = fields.Many2one(
-        comodel_name="aic.api_key_list",
-        string="Api Key",
+        comodel_name="aic.api_key_list",  # FIXED: match AicApiKeyList._name
+        string="API Key",
         required=True,
         ondelete="restrict",
         tracking=True,
         help="API key for the selected provider.\nKeep secret.",
     )
-
 
     aic_line_ids = fields.One2many(
         comodel_name="aic.user_quota_line",
@@ -76,6 +75,7 @@ class AicUser(models.Model):
         :param user: res.users record OR integer user_id
         :param model_name: Gemini model string,
                            e.g. 'gemini-2.0-flash-lite'
+                           or an aic.gemini_list record.
         :return: dict {'prompt_limit': int, 'tokens_per_prompt': int} or None
         """
         result = None
@@ -117,8 +117,10 @@ class AicUser(models.Model):
 
             # Match on the Gemini model string stored in aic.gemini_list
             line = admin_rec.aic_line_ids.filtered(
-                lambda l: l.aic_model_id
-                and l.aic_model_id.aic_gemini_model == gemini_code
+                lambda l: (
+                    l.aic_model_id
+                    and l.aic_model_id.aic_gemini_model == gemini_code
+                )
             )[:1]
 
         except Exception as exc:
@@ -156,7 +158,7 @@ class AicUserQuotaLine(models.Model):
     )
 
     aic_quota_id = fields.Many2one(
-        comodel_name="aic.user",          # must point to aic.user
+        comodel_name="aic.user",
         string="AI Chat User Config",
         required=True,
         ondelete="cascade",
@@ -179,8 +181,10 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
-        help="Max prompts per calendar day for this user+model. "
-             "0 or None means no daily limit.",
+        help=(
+            "Max prompts per calendar day for this user+model. "
+            "0 or None means no daily limit."
+        ),
     )
 
     aic_tokens_per_prompt = fields.Integer(
@@ -188,8 +192,10 @@ class AicUserQuotaLine(models.Model):
         required=True,
         default=0,
         tracking=True,
-        help="Max output tokens per answer for this user+model. "
-             "If 0, a safe default is used in the backend.",
+        help=(
+            "Max output tokens per answer for this user+model. "
+            "If 0, a safe default is used in the backend."
+        ),
     )
 
     _sql_constraints = [

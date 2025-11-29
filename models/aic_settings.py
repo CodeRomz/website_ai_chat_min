@@ -16,30 +16,34 @@ _logger = logging.getLogger(__name__)
 class AicApiKeyList(models.Model):
     """
     Master data: list of available API keys.
-
     """
+
     _name = "aic.api_key_list"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of Api Keys"
+    _description = "List of API Keys"
 
     name = fields.Char(
         string="Identifier",
+        required=True,
+        tracking=True,
         help="API Key identifier (e.g. 'FirenorQMS').",
     )
 
     api_key = fields.Char(
         string="API Key",
-        help="API key for the selected provider.\nKeep secret.",
+        required=True,
         size=512,
+        help="API key for the selected provider.\nKeep secret.",
     )
 
     _sql_constraints = [
         (
             "aic_api_key_list_unique",
-            "unique(aic_api_key_list_model)",
-            "Each Api Keys must be unique in the list.",
+            "unique(api_key)",
+            "Each API key must be unique in the list.",
         ),
     ]
+
 
 class AicGeminiList(models.Model):
     """
@@ -71,67 +75,76 @@ class AicGeminiList(models.Model):
         ),
     ]
 
+
 class AicFileStoreId(models.Model):
     """
-    Master data: list of available API keys.
-
+    Master data: list of available File Store IDs.
     """
+
     _name = "aic.file_store_id"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of File Store ID"
+    _description = "List of File Store IDs"
     _rec_name = "file_store_id"
 
     file_store_id = fields.Char(
         string="File Store ID",
-        help="File Store ID from Gemini (e.g. the FileSearchStore identifier).",
+        required=True,
         size=256,
+        help="File Store ID from Gemini (e.g. the FileSearchStore identifier).",
     )
 
     _sql_constraints = [
         (
             "aic_file_store_id_unique",
-            "unique(aic_file_store_id_model)",
+            "unique(file_store_id)",
             "Each File Store ID must be unique in the list.",
         ),
     ]
 
+
 class AicFileStoreIdGroup(models.Model):
     """
-    Master data: list of available API keys.
-
+    Master data: group identifiers for File Store IDs.
     """
+
     _name = "aic.file_store_id_group"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of File Store ID"
+    _description = "List of File Store ID Groups"
     _rec_name = "file_store_id_group"
 
     file_store_id_group = fields.Char(
         string="File Store ID Group",
-        help="File Store ID Group is to help identify FileSearchStore (e.g. FNO-QMS, FNI-Project, MM-BDD).",
+        required=True,
         size=256,
+        help=(
+            "File Store ID Group helps identify FileSearchStore "
+            "(e.g. FNO-QMS, FNI-Project, MM-BDD)."
+        ),
     )
 
     _sql_constraints = [
         (
             "aic_file_store_id_group_unique",
-            "unique(aic_file_store_id_group_model)",
+            "unique(file_store_id_group)",
             "Each File Store ID Group must be unique in the list.",
         ),
     ]
 
+
 class AicGeminiSystemInstruction(models.Model):
     """
-    Master data: list of available API keys.
-
+    Master data: named Gemini system instructions/personas.
     """
+
     _name = "aic.gemini_system_instruction"
     _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of File Store ID"
+    _description = "Gemini System Instructions"
 
     name = fields.Char(
         string="Name",
         required=True,
         tracking=True,
+        help="Short name/label for this system instruction.",
     )
 
     gemini_system_instruction = fields.Text(
@@ -146,11 +159,7 @@ class AicGeminiSystemInstruction(models.Model):
     _sql_constraints = [
         (
             "aic_gemini_system_instruction_unique",
-            "unique(aic_gemini_system_instruction_model)",
-            "Each File Store ID must be unique in the list.",
+            "unique(name)",
+            "Each Gemini system instruction name must be unique in the list.",
         ),
     ]
-
-
-
-
