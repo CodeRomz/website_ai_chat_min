@@ -41,21 +41,14 @@ class AiChatController(http.Controller):
     # -------------------------------------------------------------------------
 
     def _get_aic_user_for_current_user(self):
-        """Return the aic.user record for the current logged-in user, or None."""
+        """Return the aic.user record for the current logged-in user, or None.
+
+        Access is controlled purely by the presence of an active aic.user
+        configuration record for the logged-in res.users. This aligns the
+        controller with the new aic.user_list / aic_settings structure.
+        """
         user = request.env.user
         if not user or not user.id:
-            return None
-
-        try:
-            if not user.has_group("website_ai_chat_min.group_ai_chat_user"):
-                return None
-        except Exception as exc:
-            _logger.exception(
-                "AI Chat: error while checking AI chat groups for user %s: %s",
-                user.id,
-                exc,
-            )
-            # Fail CLOSED on group check errors: safer than letting everyone in
             return None
 
         AicUser = request.env["aic.user"].sudo()
@@ -75,14 +68,14 @@ class AiChatController(http.Controller):
         return aic_user_rec or None
 
     def _get_ai_config(self):
-        """Return API key and File Search store name from ``ir.config_parameter``.
+        """Legacy global AI config from ``ir.config_parameter``.
 
-        Expected keys in ``ir.config_parameter``::
+        This is kept only as a fallback. The canonical configuration for
+        API keys and File Stores now lives in:
 
-            website_ai_chat_min.ai_api_key
-            website_ai_chat_min.file_store_id   (File Search store name)
-
-        The values are *not* validated here; that is left to ``_call_gemini``.
+          * aic.api_key_list
+          * aic.file_store_id
+          * aic.user (aic_api_key + aic_file_store_ids)
         """
         api_key = ""
         file_store_id = ""
@@ -91,12 +84,79 @@ class AiChatController(http.Controller):
             api_key = icp.get_param("website_ai_chat_min.ai_api_key") or ""
             file_store_id = icp.get_param("website_ai_chat_min.file_store_id") or ""
         except Exception as exc:
-            _logger.exception("AI Chat: error while reading AI config: %s", exc)
+            _logger.exception("AI Chat: error while reading legacy AI config: %s", exc)
         finally:
             return {
                 "api_key": api_key,
                 "file_store_id": file_store_id,
             }
+
+    def _get_ai_credentials_for_user(self, aic_user_rec):
+        """Resolve API key and File Store IDs for this ``aic.user``.
+
+        Priority order:
+
+          1) Per-user configuration on aic.user:
+               - aic_api_key.api_key
+               - aic_file_store_ids.file_store_id (Many2many)
+          2) Legacy global config from ir.config_parameter (for backward
+             compatibility / emergency fallback).
+
+        :return: dict with keys::
+
+            {
+                "api_key": "<string or empty>",
+                "file_store_ids": ["store1", "store2", ...],
+            }
+        """
+        api_key = ""
+        file_store_ids = []
+
+        # Per-user configuration (canonical path)
+        if aic_user_rec and getattr(aic_user_rec, "id", False):
+            try:
+                rec = aic_user_rec.sudo()
+
+                if rec.aic_api_key and rec.aic_api_key.api_key:
+                    api_key = tools.ustr(rec.aic_api_key.api_key).strip()
+
+                for fs in rec.aic_file_store_ids:
+                    fsid = tools.ustr(getattr(fs, "file_store_id", "") or "").strip()
+                    if fsid:
+                        file_store_ids.append(fsid)
+            except Exception as exc:
+                _logger.exception(
+                    "AI Chat: error while resolving per-user AI credentials "
+                    "for aic.user %s: %s",
+                    getattr(aic_user_rec, "id", None),
+                    exc,
+                )
+
+        # Fallback to legacy global config if needed
+        if not api_key or not file_store_ids:
+            legacy = self._get_ai_config()
+            if not api_key:
+                api_key = tools.ustr(legacy.get("api_key") or "").strip()
+            legacy_store = tools.ustr(legacy.get("file_store_id") or "").strip()
+            if legacy_store and not file_store_ids:
+                file_store_ids.append(legacy_store)
+
+        # Deduplicate & clean
+        cleaned_stores = []
+        seen = set()
+        for fs in file_store_ids:
+            fs_clean = tools.ustr(fs or "").strip()
+            if not fs_clean:
+                continue
+            if fs_clean in seen:
+                continue
+            seen.add(fs_clean)
+            cleaned_stores.append(fs_clean)
+
+        return {
+            "api_key": api_key,
+            "file_store_ids": cleaned_stores,
+        }
 
     # -------------------------------------------------------------------------
     # Internal helpers – per-user models & limits
@@ -396,13 +456,48 @@ class AiChatController(http.Controller):
         candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
         safety_settings = self._build_gemini_safety_settings(icp)
 
-        system_instruction = (
-            icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
-        ).strip()
+        # System instruction: prefer ID-based config using aic.gemini_system_instruction,
+        # but keep a legacy text-based parameter for backward compatibility.
+        system_instruction_text = ""
+        try:
+            instr_id_raw = icp.get_param(
+                "website_ai_chat_min.gemini_system_instruction_id"
+            )
+            if instr_id_raw:
+                try:
+                    instr_id = int(instr_id_raw)
+                    instr_rec = (
+                        request.env["aic.gemini_system_instruction"]
+                        .sudo()
+                        .browse(instr_id)
+                    )
+                    if instr_rec and instr_rec.exists():
+                        txt = tools.ustr(
+                            instr_rec.gemini_system_instruction or ""
+                        ).strip()
+                        if txt:
+                            system_instruction_text = txt
+                except (TypeError, ValueError):
+                    _logger.warning(
+                        "AI Chat: invalid system instruction id '%s' – "
+                        "falling back to legacy text parameter",
+                        instr_id_raw,
+                    )
+
+            if not system_instruction_text:
+                legacy_text = (
+                    icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
+                )
+                system_instruction_text = tools.ustr(legacy_text).strip()
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while resolving Gemini system instruction: %s", exc
+            )
+            system_instruction_text = ""
 
         try:
             generation_config = genai_types.GenerateContentConfig(
-                system_instruction=system_instruction or None,
+                system_instruction=system_instruction_text or None,
                 temperature=temperature,
                 top_p=top_p,
                 top_k=top_k,
@@ -423,11 +518,12 @@ class AiChatController(http.Controller):
     # Internal helpers – Gemini call
     # -------------------------------------------------------------------------
 
-    def _call_gemini(self, api_key, file_store_id, model_name, prompt, max_output_tokens):
+    def _call_gemini(self, api_key, file_store_ids, model_name, prompt, max_output_tokens):
         """Call Google Generative AI (Gemini) with optional File Search tool.
 
         :param api_key:          Gemini API key
-        :param file_store_id:    File Search store name (fileSearchStores/...)
+        :param file_store_ids:   iterable of File Search store names
+                                 (fileSearchStores/...) to enable File Search
         :param model_name:       Gemini model identifier (from ``aic.user`` line)
         :param prompt:           user question (string)
         :param max_output_tokens: per-prompt token cap (from ``aic.user`` line)
@@ -459,12 +555,27 @@ class AiChatController(http.Controller):
 
         tools_param = None
         try:
-            file_store_id = tools.ustr(file_store_id or "").strip()
-            if file_store_id:
+            # Normalise file_store_ids -> list of unique non-empty strings
+            stores = []
+            if isinstance(file_store_ids, (str, bytes)):
+                stores = [file_store_ids]
+            elif isinstance(file_store_ids, (list, tuple, set)):
+                stores = list(file_store_ids)
+
+            cleaned = []
+            seen = set()
+            for fs in stores:
+                fs_clean = tools.ustr(fs or "").strip()
+                if not fs_clean or fs_clean in seen:
+                    continue
+                seen.add(fs_clean)
+                cleaned.append(fs_clean)
+
+            if cleaned:
                 tools_param = [
                     genai_types.Tool(
                         file_search=genai_types.FileSearch(
-                            file_search_store_names=[file_store_id]
+                            file_search_store_names=cleaned
                         )
                     )
                 ]
@@ -570,6 +681,7 @@ class AiChatController(http.Controller):
                         "model_name": "gemini-2.5-flash",
                         "prompt_limit": 20,
                         "tokens_per_prompt": 8192,
+                        "prompts_used": 0,
                     },
                     ...
                 ],
@@ -639,7 +751,7 @@ class AiChatController(http.Controller):
           * Validate against ``aic.user`` via ``get_user_model_limits()``.
           * Enforce per-day prompt quota via ``aic.user_daily_usage``.
           * Use ``tokens_per_prompt`` as ``max_output_tokens``.
-          * Use File Search if ``file_store_id`` is configured.
+          * Use File Search based on File Store IDs configured on ``aic.user``.
         """
         user = request.env.user if request and request.env else None
         if not user or not getattr(user, "id", False):
@@ -659,23 +771,25 @@ class AiChatController(http.Controller):
                 "reply": _("You are not allowed to use AI chat."),
             }
 
-        config = self._get_ai_config()
-        api_key = config.get("api_key") or ""
-        file_store_id = config.get("file_store_id") or ""
+        # Resolve API key and File Store IDs from the new aic_settings-based
+        # structure (with aic.user as the per-user binding).
+        credentials = self._get_ai_credentials_for_user(aic_user_rec)
+        api_key = credentials.get("api_key") or ""
+        file_store_ids = credentials.get("file_store_ids") or []
+
         if not api_key:
             return {
                 "ok": False,
                 "reply": _(
-                    "AI backend is not configured. Please set the API key in the "
-                    "Website settings."
+                    "AI backend is not configured. Please contact your administrator."
                 ),
             }
 
         selected_model_raw = (
-                model_name
-                or kwargs.get("model_name")
-                or kwargs.get("gemini_model")
-                or kwargs.get("model")
+            model_name
+            or kwargs.get("model_name")
+            or kwargs.get("gemini_model")
+            or kwargs.get("model")
         )
         selected_model_raw = tools.ustr(selected_model_raw or "").strip()
 
@@ -711,7 +825,7 @@ class AiChatController(http.Controller):
                 getattr(aic_user_rec, "id", None),
                 exc,
             )
-
+            # fail OPEN on quota calculation errors – safer for UX, logs keep trace
             allowed = True
 
         if not allowed:
@@ -729,16 +843,19 @@ class AiChatController(http.Controller):
         try:
             reply_text = self._call_gemini(
                 api_key=api_key,
-                file_store_id=file_store_id,
+                file_store_ids=file_store_ids,
                 model_name=effective_model,
                 prompt=q,
                 max_output_tokens=max_output_tokens,
             )
         except UserError as ue:
             _logger.warning("AI Chat: user-facing error in /ai_chat/send: %s", ue)
+            message = ue.name if hasattr(ue, "name") and ue.name else None
+            if not message and ue.args:
+                message = tools.ustr(ue.args[0])
             return {
                 "ok": False,
-                "reply": tools.ustr(ue.name or ue.args[0] if ue.args else ue),
+                "reply": message or _("Error while calling the AI backend."),
             }
         except Exception as exc:  # pragma: no cover - safety net
             _logger.exception("AI Chat: unexpected error while calling Gemini: %s", exc)
@@ -754,4 +871,3 @@ class AiChatController(http.Controller):
             "ok": True,
             "reply": reply_text,
         }
-
