@@ -17,6 +17,10 @@
                         <field name="aic_api_key" required="1"/>
                     </group>
 
+                    <field name="aic_file_store_ids"
+                           widget="many2many_tags"
+                           options="{'no_create_edit': True}"/>
+
                     <notebook>
                         <page string="Model List and Limits">
                             <field name="aic_line_ids">
@@ -51,8 +55,8 @@
             <tree string="AI Chat Users">
                 <field name="aic_user_id"/>
                 <field name="aic_api_key"/>
-                <!-- One2many is shown as a relation; this stays safe/compatible -->
                 <field name="aic_line_ids" string="Gemini Model Limits"/>
+                <field name="aic_file_store_ids" string="File Store IDs"/>
             </tree>
         </field>
     </record>

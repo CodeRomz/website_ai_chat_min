@@ -59,6 +59,18 @@ class AicUser(models.Model):
         help="Per-Gemini-model AI chat limits for this user.",
     )
 
+    aic_file_store_ids = fields.Many2many(
+        comodel_name="aic.file_store_id",
+        relation="aic_user_file_store_rel",   # unique relation name to avoid conflicts
+        column1="aic_user_id",
+        column2="file_store_id",
+        string="File Store IDs",
+        help=(
+            "File Store IDs (Gemini FileSearchStore) this user can use when "
+            "searching over documents."
+        ),
+    )
+
     _sql_constraints = [
         (
             "aic_user_unique",
