@@ -99,7 +99,7 @@
             <tree string="API Key List">
                 <field name="name"/>
                 <field name="api_key" password="true"/>
-                <field name="file_store_id"/>
+                <field name="file_store_ids"/>
             </tree>
         </field>
     </record>
