@@ -105,8 +105,8 @@
         <field name="model">aic.api_key_list</field>
         <field name="arch" type="xml">
             <tree string="API Key List">
-                <field name="aic_api_key_list_id"/>
-                <field name="aic_line_ids" string="Gemini Model List" widget="many2many_tags"/>
+                <field name="name"/>
+                <field name="aic_api_key" password="true"/>
             </tree>
         </field>
     </record>
