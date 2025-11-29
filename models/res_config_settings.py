@@ -1,13 +1,5 @@
 from odoo import models, fields, api, tools, _
-from odoo.exceptions import (
-    UserError,
-    ValidationError,
-    RedirectWarning,
-    AccessDenied,
-    AccessError,
-    CacheMiss,
-    MissingError,
-)
+from odoo.exceptions import UserError, ValidationError, RedirectWarning, AccessDenied, AccessError, CacheMiss, MissingError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -26,10 +18,9 @@ GEMINI_SAFETY_SELECTION = [
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Gemini Generation Behaviour (GenerateContentConfig)
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     aic_gemini_temperature = fields.Float(
         string="Gemini Temperature",
         default=0.2,
@@ -64,12 +55,15 @@ class ResConfigSettings(models.TransientModel):
         string="Gemini Candidate Count",
         default=1,
         config_parameter="website_ai_chat_min.gemini_candidate_count",
-        help="Number of candidate completions to generate. 1 is recommended for production.",
+        help=(
+            "Number of candidate completions to generate.\n"
+            "1 is recommended for production; higher values increase latency and quota usage."
+        ),
     )
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Per-category Gemini Safety Thresholds (one dropdown per category)
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     aic_gemini_safety_harassment = fields.Selection(
         selection=GEMINI_SAFETY_SELECTION,
         string="Harassment safety threshold",
@@ -101,3 +95,68 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="website_ai_chat_min.gemini_safety_dangerous",
         help="Safety threshold for dangerous content.",
     )
+
+    # -------------------------------------------------------------------------
+    # Validation – keep params within sane/SDK-friendly ranges
+    # -------------------------------------------------------------------------
+    @api.constrains(
+        "aic_gemini_temperature",
+        "aic_gemini_top_p",
+        "aic_gemini_top_k",
+        "aic_gemini_candidate_count",
+    )
+    def _check_gemini_parameters(self):
+        """
+        Guardrails for misconfiguration in production:
+        - temperature: [0.0, 2.0]
+        - top_p:      (0.0, 1.0]
+        - top_k:      >= 0
+        - candidates: >= 1
+        """
+        for rec in self:
+            # Temperature
+            if rec.aic_gemini_temperature is not None and not (
+                0.0 <= rec.aic_gemini_temperature <= 2.0
+            ):
+                raise ValidationError(
+                    _(
+                        "Gemini temperature must be between 0.0 and 2.0. "
+                        "Current value: %(value)s",
+                        value=rec.aic_gemini_temperature,
+                    )
+                )
+
+            # Top P
+            if rec.aic_gemini_top_p is not None and not (
+                0.0 < rec.aic_gemini_top_p <= 1.0
+            ):
+                raise ValidationError(
+                    _(
+                        "Gemini Top P must be in the range (0.0, 1.0]. "
+                        "Current value: %(value)s",
+                        value=rec.aic_gemini_top_p,
+                    )
+                )
+
+            # Top K
+            if rec.aic_gemini_top_k is not None and rec.aic_gemini_top_k < 0:
+                raise ValidationError(
+                    _(
+                        "Gemini Top K cannot be negative. "
+                        "Current value: %(value)s",
+                        value=rec.aic_gemini_top_k,
+                    )
+                )
+
+            # Candidate count
+            if (
+                rec.aic_gemini_candidate_count is not None
+                and rec.aic_gemini_candidate_count < 1
+            ):
+                raise ValidationError(
+                    _(
+                        "Gemini Candidate Count must be at least 1. "
+                        "Current value: %(value)s",
+                        value=rec.aic_gemini_candidate_count,
+                    )
+                )
