@@ -82,7 +82,7 @@
                 <sheet>
                     <group>
                         <field name="name" required="1"/>
-                        <field name="aic_api_key_list" required="1" password="True"/>
+                        <field name="aic_api_key" required="1" password="True"/>
                     </group>
                 </sheet>
 
