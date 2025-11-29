@@ -44,14 +44,13 @@ class AicUser(models.Model):
     )
 
     aic_api_key = fields.Many2one(
-        comodel_name="aic.api_key",
+        comodel_name="aic.api_key_list",
         string="Api Key",
         required=True,
         ondelete="restrict",
         tracking=True,
         help="API key for the selected provider.\nKeep secret.",
     )
-
 
 
     aic_line_ids = fields.One2many(
