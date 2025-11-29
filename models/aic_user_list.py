@@ -168,7 +168,6 @@ class AicUserQuotaLine(models.Model):
     _inherit = ["mail.activity.mixin", "mail.thread"]
     _description = "AI Chat Per Gemini Model Limits"
     _order = "aic_model_id"
-    _rec_name = "aic_model_id"
 
     active = fields.Boolean(
         string="Active",
