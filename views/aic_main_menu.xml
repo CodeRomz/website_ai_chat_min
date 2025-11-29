@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
     <data>
-        <menuitem name="Ai Chat" id="aic_menu_root" web_icon="website_ai_chat_min,static/src/img/chat_logo.png" groups="group_ai_chat_user"/>
+        <menuitem name="Ai Chat" id="aic_menu_root" web_icon="website_ai_chat_min,static/src/img/app_logo.png" groups="group_ai_chat_user"/>
 
         <menuitem name="Reports" sequence="50" id="aic_menu_reports" parent="aic_menu_root" groups="group_ai_chat_admin"/>
 
