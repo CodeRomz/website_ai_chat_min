@@ -103,7 +103,7 @@ class AicFileStoreIdGroup(models.Model):
     _name = "aic.file_store_id_group"
     _inherit = ["mail.activity.mixin", "mail.thread"]
     _description = "List of File Store ID"
-    _rec_name = "file_store_id"
+    _rec_name = "file_store_id_group"
 
     file_store_id_group = fields.Char(
         string="File Store ID Group",
