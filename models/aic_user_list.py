@@ -44,7 +44,7 @@ class AicUser(models.Model):
     )
 
     aic_api_key = fields.Many2one(
-        comodel_name="aic.api_key_list",  # FIXED: match AicApiKeyList._name
+        comodel_name="aic.api_key_list",
         string="API Key",
         required=True,
         ondelete="restrict",
@@ -103,12 +103,13 @@ class AicUser(models.Model):
         else:
             gemini_code = str(model_name or "").strip()
 
-        line = self.env["aic.user_quota_line"]
+        quota_line_model = self.env["aic.user_quota_line"]
         try:
             if not aic_user_id or not gemini_code:
                 return None
 
-            admin_rec = self.search(
+            # Use sudo() so website/public calls can still read limits
+            admin_rec = self.sudo().search(
                 [("aic_user_id", "=", aic_user_id), ("active", "=", True)],
                 limit=1,
             )

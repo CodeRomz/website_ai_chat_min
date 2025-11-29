@@ -14,7 +14,7 @@
                         <field name="aic_user_id"
                                required="1"
                                options="{'no_create_edit': True, 'no_create': True}"/>
-                        <field name="aic_api_key" required="1" />
+                        <field name="aic_api_key" required="1"/>
                     </group>
 
                     <notebook>
@@ -48,13 +48,14 @@
         <field name="name">aic.user.tree</field>
         <field name="model">aic.user</field>
         <field name="arch" type="xml">
-            <tree string="AI Chat Admin">
+            <tree string="AI Chat Users">
                 <field name="aic_user_id"/>
-                <field name="aic_line_ids" string="Gemini Model List" widget="many2many_tags"/>
+                <field name="aic_api_key"/>
+                <!-- One2many is shown as a relation; this stays safe/compatible -->
+                <field name="aic_line_ids" string="Gemini Model Limits"/>
             </tree>
         </field>
     </record>
-
 
     <!-- =====================================================
          Action – Open aic.user

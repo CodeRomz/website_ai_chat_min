@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <!-- =====================================================
-     aic.gemini_list – Form View
-     ===================================================== -->
+         aic.gemini_list – Form View
+         ===================================================== -->
 
     <record id="aic_gemini_list_view_form" model="ir.ui.view">
         <field name="name">aic.gemini_list.form</field>
         <field name="model">aic.gemini_list</field>
         <field name="arch" type="xml">
-            <form string="API Key">
+            <form string="Gemini Model">
                 <sheet>
                     <group>
                         <field name="aic_gemini_model" required="1"/>
@@ -39,9 +39,7 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         Action – Open aic.gemini_list
-         ===================================================== -->
+    <!-- Action – Open aic.gemini_list -->
 
     <record id="aic_gemini_list_action" model="ir.actions.act_window">
         <field name="name">Gemini Model List</field>
@@ -55,9 +53,7 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         aic.gemini_list – Menus
-         ===================================================== -->
+    <!-- Menu – aic.gemini_list -->
 
     <menuitem id="aic_menu_gemini_list"
               name="Gemini Model List"
@@ -65,10 +61,6 @@
               action="aic_gemini_list_action"
               sequence="10"
               groups="group_ai_chat_admin"/>
-
-
-    <!--#############################################################################################################-->
-
 
     <!-- =====================================================
          aic.api_key_list – Form View
@@ -86,7 +78,7 @@
                     </group>
                 </sheet>
 
-                <!-- chatter (mail.thread + mail.activity.mixin) -->
+                <!-- chatter -->
                 <div class="oe_chatter">
                     <field name="message_follower_ids"/>
                     <field name="activity_ids"/>
@@ -96,9 +88,7 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         aic.api_key_list – Tree View
-         ===================================================== -->
+    <!-- aic.api_key_list – Tree View -->
 
     <record id="aic_api_key_list_view_tree" model="ir.ui.view">
         <field name="name">aic.api_key_list.tree</field>
@@ -111,10 +101,7 @@
         </field>
     </record>
 
-
-    <!-- =====================================================
-         Action – Open aic.api_key_list
-         ===================================================== -->
+    <!-- Action – aic.api_key_list -->
 
     <record id="aic_api_key_list_action" model="ir.actions.act_window">
         <field name="name">API Key List</field>
@@ -128,15 +115,188 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         aic.api_key_list – Menus
-         ===================================================== -->
+    <!-- Menu – aic.api_key_list -->
 
     <menuitem id="aic_menu_api_key_list"
-              name="Api Keys"
+              name="API Keys"
               parent="aic_menu_configuration"
               action="aic_api_key_list_action"
-              sequence="10"
+              sequence="20"
+              groups="group_ai_chat_admin"/>
+
+    <!-- =====================================================
+         aic.file_store_id – Form View
+         ===================================================== -->
+
+    <record id="aic_file_store_id_view_form" model="ir.ui.view">
+        <field name="name">aic.file_store_id.form</field>
+        <field name="model">aic.file_store_id</field>
+        <field name="arch" type="xml">
+            <form string="File Store ID">
+                <sheet>
+                    <group>
+                        <field name="file_store_id" required="1"/>
+                    </group>
+                </sheet>
+
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- aic.file_store_id – Tree View -->
+
+    <record id="aic_file_store_id_view_tree" model="ir.ui.view">
+        <field name="name">aic.file_store_id.tree</field>
+        <field name="model">aic.file_store_id</field>
+        <field name="arch" type="xml">
+            <tree string="File Store IDs">
+                <field name="file_store_id"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Action – aic.file_store_id -->
+
+    <record id="aic_file_store_id_action" model="ir.actions.act_window">
+        <field name="name">File Store IDs</field>
+        <field name="res_model">aic.file_store_id</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="aic_file_store_id_view_tree"/>
+        <field name="help" type="html">
+            <p>
+                Maintain Gemini File Store IDs used for File Search.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu – aic.file_store_id -->
+
+    <menuitem id="aic_menu_file_store_id"
+              name="File Store IDs"
+              parent="aic_menu_configuration"
+              action="aic_file_store_id_action"
+              sequence="30"
+              groups="group_ai_chat_admin"/>
+
+    <!-- =====================================================
+         aic.file_store_id_group – Form View
+         ===================================================== -->
+
+    <record id="aic_file_store_id_group_view_form" model="ir.ui.view">
+        <field name="name">aic.file_store_id_group.form</field>
+        <field name="model">aic.file_store_id_group</field>
+        <field name="arch" type="xml">
+            <form string="File Store Group">
+                <sheet>
+                    <group>
+                        <field name="file_store_id_group" required="1"/>
+                    </group>
+                </sheet>
+
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- aic.file_store_id_group – Tree View -->
+
+    <record id="aic_file_store_id_group_view_tree" model="ir.ui.view">
+        <field name="name">aic.file_store_id_group.tree</field>
+        <field name="model">aic.file_store_id_group</field>
+        <field name="arch" type="xml">
+            <tree string="File Store ID Groups">
+                <field name="file_store_id_group"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Action – aic.file_store_id_group -->
+
+    <record id="aic_file_store_id_group_action" model="ir.actions.act_window">
+        <field name="name">File Store ID Groups</field>
+        <field name="res_model">aic.file_store_id_group</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="aic_file_store_id_group_view_tree"/>
+        <field name="help" type="html">
+            <p>
+                Maintain groups of File Store IDs (e.g. QMS, Projects, BDD).
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu – aic.file_store_id_group -->
+
+    <menuitem id="aic_menu_file_store_id_group"
+              name="File Store Groups"
+              parent="aic_menu_configuration"
+              action="aic_file_store_id_group_action"
+              sequence="40"
+              groups="group_ai_chat_admin"/>
+
+    <!-- =====================================================
+         aic.gemini_system_instruction – Form / Tree
+         ===================================================== -->
+
+    <record id="aic_gemini_system_instruction_view_form" model="ir.ui.view">
+        <field name="name">aic.gemini_system_instruction.form</field>
+        <field name="model">aic.gemini_system_instruction</field>
+        <field name="arch" type="xml">
+            <form string="Gemini System Instruction">
+                <sheet>
+                    <group>
+                        <field name="name" required="1"/>
+                    </group>
+                    <group>
+                        <field name="gemini_system_instruction"
+                               placeholder="Persona, guardrails, behaviour..."/>
+                    </group>
+                </sheet>
+
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="aic_gemini_system_instruction_view_tree" model="ir.ui.view">
+        <field name="name">aic.gemini_system_instruction.tree</field>
+        <field name="model">aic.gemini_system_instruction</field>
+        <field name="arch" type="xml">
+            <tree string="Gemini System Instructions">
+                <field name="name"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="aic_gemini_system_instruction_action" model="ir.actions.act_window">
+        <field name="name">System Instructions</field>
+        <field name="res_model">aic.gemini_system_instruction</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="aic_gemini_system_instruction_view_tree"/>
+        <field name="help" type="html">
+            <p>
+                Maintain reusable Gemini system instructions / personas.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="aic_menu_gemini_system_instruction"
+              name="System Instructions"
+              parent="aic_menu_configuration"
+              action="aic_gemini_system_instruction_action"
+              sequence="50"
               groups="group_ai_chat_admin"/>
 
 </odoo>

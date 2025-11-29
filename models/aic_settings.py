@@ -153,7 +153,6 @@ class AicGeminiSystemInstruction(models.Model):
             "Optional global system instruction (persona, behaviour, constraints) "
             "sent as system_instruction to Gemini in GenerateContentConfig."
         ),
-        size=10000,  # allow a long persona string
     )
 
     _sql_constraints = [
