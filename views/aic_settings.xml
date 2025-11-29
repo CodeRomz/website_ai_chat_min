@@ -75,7 +75,7 @@
                     <group>
                         <field name="name" required="1"/>
                         <field name="api_key" required="1" password="True"/>
-                        <field name="file_store_id" required="1"/>
+                        <field name="file_store_ids" required="1"/>
 
                     </group>
                 </sheet>
