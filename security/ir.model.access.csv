@@ -1,6 +1,8 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_aic_user_admin,AI Chat User - Admin Access,website_ai_chat_min.model_aic_user,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
-access_aic_user_quota_line_admin,AI Chat User Quota Line - Admin Access,website_ai_chat_min.model_aic_user_quota_line,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
-access_aic_gemini_list_admin,Gemini Model List - Admin Access,website_ai_chat_min.model_aic_gemini_list,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
-access_aic_user_daily_usage,AI Chat User - Daily Usage,website_ai_chat_min.model_aic_user_daily_usage,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
-access_aic_api_key_list,Gemini API Key List - Admin Access,website_ai_chat_min.model_aic_api_key_list,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_api_key_list_admin,aic.api_key_list admin,model_aic_api_key_list,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_gemini_list_admin,aic.gemini_list admin,model_aic_gemini_list,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_file_store_id_admin,aic.file_store_id admin,model_aic_file_store_id,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_file_store_id_group_admin,aic.file_store_id_group admin,model_aic_file_store_id_group,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_gemini_system_instruction_admin,aic.gemini_system_instruction admin,model_aic_gemini_system_instruction,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_user_admin,aic.user admin,model_aic_user,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
+access_aic_user_quota_line_admin,aic.user_quota_line admin,model_aic_user_quota_line,website_ai_chat_min.group_ai_chat_admin,1,1,1,1
