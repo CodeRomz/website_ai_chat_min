@@ -30,7 +30,7 @@
 
     "assets": {
         "web.assets_frontend": [
-            "website_ai_chat_min/static/src/css/ai_chat.css",
+            "website_ai_chat_min/static/src/scss/ai_chat.scss",
             "website_ai_chat_min/static/src/js/ai_chat.js",
         ],
     },
