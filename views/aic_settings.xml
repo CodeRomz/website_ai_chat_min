@@ -48,7 +48,6 @@
         <field name="res_model">aic.gemini_list</field>
         <field name="view_mode">tree,form</field>
         <field name="view_id" ref="aic_gemini_list_view_tree"/>
-        <field name="search_view_id" ref="aic_gemini_list_view_search"/>
         <field name="help" type="html">
             <p>
                 Configure Gemini Model.
@@ -122,7 +121,6 @@
         <field name="res_model">aic.api_key_list</field>
         <field name="view_mode">tree,form</field>
         <field name="view_id" ref="aic_api_key_list_view_tree"/>
-        <field name="search_view_id" ref="aic_api_key_list_view_search"/>
         <field name="help" type="html">
             <p>
                 Configure API Key.
