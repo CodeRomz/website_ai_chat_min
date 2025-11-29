@@ -19,36 +19,35 @@ from odoo.http import request
 
 # google-genai (Gemini) is optional at import time – we guard usage in _call_gemini.
 try:
-    import google.genai as genai
+    from google import genai
     from google.genai import types as genai_types
-except Exception:  # pragma: no cover - library may not be installed on all envs
+except Exception:  # pragma: no cover - library may not be installed everywhere
     genai = None
     genai_types = None
 
 
 class AiChatController(http.Controller):
-    """AI Chat controller for website_ai_chat_min.
+    """Website AI chat controller for website_ai_chat_min.
 
-    This controller exposes three JSON endpoints used by the frontend widget:
+    JSON endpoints consumed by the website widget:
 
-      * /ai_chat/can_load  – check if the current user is allowed to use AI chat.
-      * /ai_chat/models    – list the Gemini models configured for the user.
+      * /ai_chat/can_load  – lightweight check if the widget should be shown.
+      * /ai_chat/models    – list per-user Gemini models and daily usage.
       * /ai_chat/send      – send a prompt to Gemini using the selected model.
     """
 
     # -------------------------------------------------------------------------
-    # Internal helpers – user / config
+    # Internal helpers – user / configuration
     # -------------------------------------------------------------------------
 
     def _get_aic_user_for_current_user(self):
-        """Return the aic.user record for the current logged-in user, or None.
+        """Return the ``aic.user`` record bound to the current ``res.users``.
 
-        Access is controlled purely by the presence of an active aic.user
-        configuration record for the logged-in res.users. This aligns the
-        controller with the aic.user / aic_settings structure.
+        Access to the AI chat is controlled purely by the presence of an active
+        ``aic.user`` configuration. No extra security group is required.
         """
-        user = request.env.user
-        if not user or not user.id:
+        user = request.env.user if request and request.env else None
+        if not user or not getattr(user, "id", False):
             return None
 
         AicUser = request.env["aic.user"].sudo()
@@ -66,6 +65,55 @@ class AiChatController(http.Controller):
             aic_user_rec = request.env["aic.user"]
 
         return aic_user_rec or None
+
+    def _get_ai_credentials_for_user(self, aic_user_rec):
+        """Resolve API key and File Store IDs for this ``aic.user``.
+
+        Configuration is strictly per-user and comes from:
+
+          * ``aic_api_key.api_key`` (Many2one to ``aic.api_key_list``)
+          * ``aic_file_store_ids.file_store_id`` (Many2many to ``aic.file_store_id``)
+
+        :return: dict with keys::
+
+            {
+                "api_key": "<string or empty>",
+                "file_store_ids": ["store1", "store2", ...],
+            }
+        """
+        api_key = ""
+        file_store_ids = []
+
+        if not aic_user_rec or not getattr(aic_user_rec, "id", False):
+            return {
+                "api_key": api_key,
+                "file_store_ids": file_store_ids,
+            }
+
+        try:
+            rec = aic_user_rec.sudo()
+
+            # Per-user API key (canonical path)
+            if rec.aic_api_key and rec.aic_api_key.api_key:
+                api_key = tools.ustr(rec.aic_api_key.api_key or "").strip()
+
+            # Per-user File Search stores (multiple allowed)
+            for fs in rec.aic_file_store_ids:
+                fsid = tools.ustr(getattr(fs, "file_store_id", "") or "").strip()
+                if fsid:
+                    file_store_ids.append(fsid)
+        except Exception as exc:
+            _logger.exception(
+                "AI Chat: error while resolving per-user AI credentials "
+                "for aic.user %s: %s",
+                getattr(aic_user_rec, "id", None),
+                exc,
+            )
+
+        return {
+            "api_key": api_key,
+            "file_store_ids": file_store_ids,
+        }
 
     def _normalize_file_store_ids(self, file_store_ids):
         """Return a deduplicated, cleaned list of File Store IDs."""
@@ -86,60 +134,14 @@ class AiChatController(http.Controller):
             cleaned.append(fs_clean)
         return cleaned
 
-    def _get_ai_credentials_for_user(self, aic_user_rec):
-        """Resolve API key and File Store IDs for this ``aic.user``.
-
-        Priority order:
-
-          1) Per-user configuration on aic.user:
-               - aic_api_key.api_key
-               - aic_file_store_ids.file_store_id (Many2many)
-          2) Legacy global config from ir.config_parameter (for backward
-             compatibility / emergency fallback).
-
-        :return: dict with keys::
-
-            {
-                "api_key": "<string or empty>",
-                "file_store_ids": ["store1", "store2", ...],
-            }
-        """
-        api_key = ""
-        file_store_ids = []
-
-        # Per-user configuration (canonical path)
-        if aic_user_rec and getattr(aic_user_rec, "id", False):
-            try:
-                rec = aic_user_rec.sudo()
-
-                if rec.aic_api_key and rec.aic_api_key.api_key:
-                    api_key = tools.ustr(rec.aic_api_key.api_key).strip()
-
-                for fs in rec.aic_file_store_ids:
-                    fsid = tools.ustr(getattr(fs, "file_store_id", "") or "").strip()
-                    if fsid:
-                        file_store_ids.append(fsid)
-            except Exception as exc:
-                _logger.exception(
-                    "AI Chat: error while resolving per-user AI credentials "
-                    "for aic.user %s: %s",
-                    getattr(aic_user_rec, "id", None),
-                    exc,
-                )
-
-        return {
-            "api_key": api_key,
-            "file_store_ids": file_store_ids,
-        }
-
     # -------------------------------------------------------------------------
     # Internal helpers – per-user models & limits
     # -------------------------------------------------------------------------
 
     def _build_all_models_for_user(self, aic_user_rec):
-        """Return a list of all active models configured for ``aic.user``.
+        """Return all active models configured for ``aic.user``.
 
-        Each item in the returned list has the shape::
+        Each item looks like::
 
             {
                 "model_name": "gemini-2.5-flash",
@@ -148,11 +150,11 @@ class AiChatController(http.Controller):
                 "prompts_used": 3,  # daily usage from aic.user_daily_usage
             }
 
-        This is used exclusively by ``/ai_chat/models`` to render the selector
-        on the frontend. No list of models is ever sent to Gemini.
+        Only used to drive the frontend model dropdown. No model list is ever
+        sent to Gemini itself.
         """
         models_list = []
-        if not aic_user_rec:
+        if not aic_user_rec or not getattr(aic_user_rec, "id", False):
             return models_list
 
         try:
@@ -216,10 +218,7 @@ class AiChatController(http.Controller):
         return models_list
 
     def _resolve_model_limits_for_user(self, aic_user_rec, model_name=None):
-        """Resolve the effective Gemini model and limits for this user.
-
-        This method never builds ``all_models`` – it only returns the limits
-        for *one* model (the one requested or the default).
+        """Resolve the effective Gemini model and per-prompt limits.
 
         :param aic_user_rec: ``aic.user`` record for the current user.
         :param model_name: optional Gemini model code chosen in the UI.
@@ -239,7 +238,7 @@ class AiChatController(http.Controller):
             "tokens_per_prompt": None,
         }
 
-        if not aic_user_rec:
+        if not aic_user_rec or not getattr(aic_user_rec, "id", False):
             return result
 
         requested_model_name = tools.ustr(model_name or "").strip() or None
@@ -254,7 +253,7 @@ class AiChatController(http.Controller):
             if not user or not getattr(user, "id", False):
                 return result
 
-            # If the UI requested a specific model, try to resolve limits for it
+            # If the UI requested a specific model, resolve its limits.
             if requested_model_name:
                 try:
                     limits = (
@@ -277,7 +276,7 @@ class AiChatController(http.Controller):
                     prompt_limit = limits.get("prompt_limit")
                     tokens_per_prompt = limits.get("tokens_per_prompt")
 
-            # Fallback to the first active model if nothing resolved
+            # Fallback: first active line for the user.
             if not effective_model:
                 line = (
                     aic_user_rec.sudo()
@@ -288,7 +287,7 @@ class AiChatController(http.Controller):
                     line = line[0]
                     if line.aic_model_id and line.aic_model_id.aic_gemini_model:
                         effective_model = tools.ustr(
-                            line.aic_model_id.aic_gemini_model
+                            line.aic_model_id.aic_gemini_model or ""
                         ).strip() or None
                         prompt_limit = line.aic_prompt_limit
                         tokens_per_prompt = line.aic_tokens_per_prompt
@@ -310,7 +309,7 @@ class AiChatController(http.Controller):
         return result
 
     # -------------------------------------------------------------------------
-    # Internal helpers – Gemini config (generation + safety)
+    # Internal helpers – Gemini config (safety + generation)
     # -------------------------------------------------------------------------
 
     def _build_gemini_safety_settings(self, icp):
@@ -354,6 +353,7 @@ class AiChatController(http.Controller):
                 raw_threshold = (icp.get_param(param_key) or "").strip()
 
                 if not raw_threshold or raw_threshold == "sdk_default":
+                    # Use SDK / API default behaviour.
                     continue
 
                 try:
@@ -389,7 +389,7 @@ class AiChatController(http.Controller):
         return safety_settings
 
     def _build_gemini_generation_config(self, max_output_tokens, tools_param):
-        """Build GenerateContentConfig from ir.config_parameter + per-user limits."""
+        """Build ``GenerateContentConfig`` from ir.config_parameter + per-user limits."""
         if not genai_types:
             raise UserError(
                 _(
@@ -433,11 +433,11 @@ class AiChatController(http.Controller):
         safety_settings = self._build_gemini_safety_settings(icp)
 
         # ------------------------------------------------------------------
-        # System instruction from aic.gemini_system_instruction
+        # System instruction from aic.gemini_system_instruction + legacy text
         # ------------------------------------------------------------------
         system_instruction_text = ""
         try:
-            # New path: ID of aic.gemini_system_instruction chosen in settings
+            # Preferred path: ID of aic.gemini_system_instruction chosen in settings.
             instr_id_raw = icp.get_param(
                 "website_ai_chat_min.gemini_system_instruction_id"
             )
@@ -462,12 +462,12 @@ class AiChatController(http.Controller):
                         instr_id_raw,
                     )
 
-            # Legacy text parameter fallback for backward compatibility
+            # Legacy text parameter fallback for backward compatibility.
             if not system_instruction_text:
                 legacy_text = (
                     icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
                 )
-                system_instruction_text = tools.ustr(legacy_text).strip()
+                system_instruction_text = tools.ustr(legacy_text or "").strip()
         except Exception as exc:
             _logger.exception(
                 "AI Chat: error while resolving Gemini system instruction: %s", exc
@@ -507,13 +507,13 @@ class AiChatController(http.Controller):
     ):
         """Call Google Generative AI (Gemini) with optional File Search tool.
 
-        :param api_key:          Gemini API key
-        :param file_store_ids:   iterable of File Search store names
-                                 (fileSearchStores/...) to enable File Search
-        :param model_name:       Gemini model identifier (from ``aic.user`` line)
-        :param prompt:           user question (string)
-        :param max_output_tokens: per-prompt token cap (from ``aic.user`` line)
-        :return: reply text (string)
+        :param api_key:           Gemini API key.
+        :param file_store_ids:    iterable of File Search store names
+                                  (``fileSearchStores/...``) to enable File Search.
+        :param model_name:        Gemini model identifier (from ``aic.user`` line).
+        :param prompt:            user question (string).
+        :param max_output_tokens: per-prompt token cap (from ``aic.user`` line).
+        :return: reply text (string).
         :raises UserError: on configuration or runtime errors.
         """
         if not genai or not genai_types:
@@ -621,12 +621,18 @@ class AiChatController(http.Controller):
     def can_load(self, **kwargs):
         """Return whether the AI chat widget should be shown for this user.
 
-        This is a lightweight check so the frontend can decide to render the
-        widget. The actual enforcement still happens in ``/ai_chat/send``.
+        The widget is shown only if:
+
+          * there is an active ``aic.user`` record bound to the current user, and
+          * that record has a usable API key configured.
         """
+        show = False
         try:
             aic_user_rec = self._get_aic_user_for_current_user()
-            show = bool(aic_user_rec and getattr(aic_user_rec, "id", False))
+            if aic_user_rec and getattr(aic_user_rec, "id", False):
+                creds = self._get_ai_credentials_for_user(aic_user_rec)
+                if creds.get("api_key"):
+                    show = True
         except Exception as exc:
             _logger.exception("AI Chat: error in /ai_chat/can_load: %s", exc)
             show = False
@@ -742,8 +748,7 @@ class AiChatController(http.Controller):
                 "reply": _("You are not allowed to use AI chat."),
             }
 
-        # Resolve API key and File Store IDs from the new aic_settings-based
-        # structure (with aic.user as the per-user binding).
+        # Resolve API key and File Store IDs from the per-user configuration.
         credentials = self._get_ai_credentials_for_user(aic_user_rec)
         api_key = credentials.get("api_key") or ""
         file_store_ids = credentials.get("file_store_ids") or []
@@ -764,7 +769,7 @@ class AiChatController(http.Controller):
         )
         selected_model_raw = tools.ustr(selected_model_raw or "").strip()
 
-        # Resolve effective model and per-prompt limits
+        # Resolve effective model and per-prompt limits.
         limits = self._resolve_model_limits_for_user(
             aic_user_rec,
             model_name=selected_model_raw,
@@ -796,7 +801,7 @@ class AiChatController(http.Controller):
                 getattr(aic_user_rec, "id", None),
                 exc,
             )
-            # fail OPEN on quota calculation errors – safer for UX, logs keep trace
+            # Fail OPEN on quota calculation errors – better UX, errors are logged.
             allowed = True
 
         if not allowed:
