@@ -27,7 +27,7 @@ class AicUserDailyUsage(models.Model):
 
     aic_user_id = fields.Many2one(
         "aic.user",
-        string="AI Chat User Config",
+        string="Chat User",
         required=True,
         ondelete="cascade",
         index=True,
