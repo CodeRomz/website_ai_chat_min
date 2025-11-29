@@ -17,7 +17,7 @@
 
                         <field name="aic_api_key" required="1"/>
 
-                         <field name="aic_file_store_ids"
+                        <field name="aic_file_store_ids"
                                widget="many2many_tags"
                                options="{'no_create_edit': True}"
                                domain="[('api_key_id', '=', aic_api_key)]"/>

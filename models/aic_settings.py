@@ -37,8 +37,8 @@ class AicApiKeyList(models.Model):
     )
 
     file_store_ids = fields.One2many(
-        "aic.file_store_id",
-        "api_key_id",
+        comodel_name="aic.file_store_id",
+        inverse_name="api_key_id",
         string="File Store IDs",
         help="File Store IDs linked to this API key for Gemini File Search.",
     )
@@ -107,7 +107,7 @@ class AicFileStoreId(models.Model):
     )
 
     api_key_id = fields.Many2one(
-        "aic.api_key_list",
+        comodel_name="aic.api_key_list",
         string="API Key",
         required=True,
         ondelete="restrict",

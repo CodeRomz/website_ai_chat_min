@@ -68,6 +68,34 @@ class AicUser(models.Model):
         help="File Stores this user can use (must belong to the selected API Key).",
     )
 
+    @api.onchange("aic_api_key")
+    def _onchange_aic_api_key(self):
+        """Keep file stores consistent with the selected API key in the form."""
+        for rec in self:
+            if not rec.aic_api_key:
+                # Reset if API key cleared
+                rec.aic_file_store_ids = [(5, 0, 0)]
+            else:
+                rec.aic_file_store_ids = rec.aic_file_store_ids.filtered(
+                    lambda fs: fs.api_key_id == rec.aic_api_key
+                )
+
+    @api.constrains("aic_api_key", "aic_file_store_ids")
+    def _check_file_store_api_key_consistency(self):
+        """Ensure all file stores belong to the selected API key."""
+        for rec in self:
+            mismatched = rec.aic_file_store_ids.filtered(
+                lambda fs: fs.api_key_id and fs.api_key_id != rec.aic_api_key
+            )
+            if mismatched:
+                raise ValidationError(
+                    _(
+                        "All File Store IDs must belong to the selected API Key.\n"
+                        "Offending entries: %s"
+                    )
+                    % ", ".join(mismatched.mapped("name"))
+                )
+
     _sql_constraints = [
         (
             "aic_user_unique",
@@ -105,8 +133,8 @@ class AicUser(models.Model):
 
         # Normalize model_name -> string (Gemini code)
         if (
-            isinstance(model_name, models.BaseModel)
-            and model_name._name == "aic.gemini_list"
+                isinstance(model_name, models.BaseModel)
+                and model_name._name == "aic.gemini_list"
         ):
             gemini_code = model_name.aic_gemini_model
         else:
@@ -128,8 +156,8 @@ class AicUser(models.Model):
             # Match on the Gemini model string stored in aic.gemini_list
             line = admin_rec.aic_line_ids.filtered(
                 lambda l: (
-                    l.aic_model_id
-                    and l.aic_model_id.aic_gemini_model == gemini_code
+                        l.aic_model_id
+                        and l.aic_model_id.aic_gemini_model == gemini_code
                 )
             )[:1]
 
