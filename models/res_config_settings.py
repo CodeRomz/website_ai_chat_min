@@ -18,6 +18,22 @@ GEMINI_SAFETY_SELECTION = [
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
+
+    # -------------------------------------------------------------------------
+    # Default Gemini system instruction / persona
+    # -------------------------------------------------------------------------
+    aic_gemini_system_instruction_id = fields.Many2one(
+        comodel_name="aic.gemini_system_instruction",
+        string="Default Gemini system instruction",
+        help=(
+            "Optional default system instruction/persona used by the website AI "
+            "chat. This will be sent as system_instruction in the "
+            "GenerateContentConfig for Gemini."
+        ),
+    )
+
+
+
     # -------------------------------------------------------------------------
     # Gemini Generation Behaviour (GenerateContentConfig)
     # -------------------------------------------------------------------------
@@ -160,3 +176,48 @@ class ResConfigSettings(models.TransientModel):
                         value=rec.aic_gemini_candidate_count,
                     )
                 )
+
+    # -------------------------------------------------------------------------
+    # Persist Many2one via ir.config_parameter
+    # -------------------------------------------------------------------------
+    @api.model
+    def get_values(self):
+        """
+        Load the selected Gemini system instruction from ir.config_parameter,
+        in addition to the standard config_parameter-backed fields.
+        """
+        res = super().get_values()
+        icp_sudo = self.env["ir.config_parameter"].sudo()
+
+        raw_instruction_id = icp_sudo.get_param(
+            "website_ai_chat_min.gemini_system_instruction_id"
+        )
+
+        instruction_id = False
+        if raw_instruction_id:
+            try:
+                instruction_id = int(raw_instruction_id)
+            except (TypeError, ValueError):
+                _logger.warning(
+                    "Invalid gemini_system_instruction_id in config: %s; resetting.",
+                    raw_instruction_id,
+                )
+                instruction_id = False
+
+        res.update(
+            aic_gemini_system_instruction_id=instruction_id,
+        )
+        return res
+
+    def set_values(self):
+        """
+        Store the selected Gemini system instruction in ir.config_parameter.
+        Other fields continue to use the built-in config_parameter mechanism.
+        """
+        super().set_values()
+        icp_sudo = self.env["ir.config_parameter"].sudo()
+
+        icp_sudo.set_param(
+            "website_ai_chat_min.gemini_system_instruction_id",
+            self.aic_gemini_system_instruction_id.id or False,
+        )

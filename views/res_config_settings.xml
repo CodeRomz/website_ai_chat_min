@@ -12,6 +12,19 @@
                        help="Configure Gemini-based AI chat behaviour for this website."
                        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
+                    <!-- Default Gemini system instruction / persona -->
+                    <setting string="Default system instruction"
+                             help="Select the default Gemini system instruction/persona used by the website AI chat.">
+                        <div class="content-group mt16">
+                            <field name="aic_gemini_system_instruction_id"
+                                   options="{'no_create_edit': True}"/>
+                            <div class="text-muted">
+                                This instruction is sent as <code>system_instruction</code> to Gemini
+                                in the GenerateContentConfig.
+                            </div>
+                        </div>
+                    </setting>
+
                     <!-- Row 1: Generation behaviour -->
                     <setting string="Generation behaviour"
                              help="Tune randomness and sampling parameters controlling Gemini’s responses.">
