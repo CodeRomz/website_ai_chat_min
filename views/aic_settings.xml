@@ -40,26 +40,6 @@
     </record>
 
     <!-- =====================================================
-         aic.gemini_list – Search View
-         ===================================================== -->
-
-    <record id="aic_gemini_list_view_search" model="ir.ui.view">
-        <field name="name">aic.gemini_list.search</field>
-        <field name="model">aic.gemini_list</field>
-        <field name="arch" type="xml">
-            <search string="Gemini List">
-                <field name="aic_gemini_model"/>
-                <filter name="filter_active"
-                        string="Active"
-                        domain="[('active', '=', True)]"/>
-                <filter name="filter_inactive"
-                        string="Inactive"
-                        domain="[('active', '=', False)]"/>
-            </search>
-        </field>
-    </record>
-
-    <!-- =====================================================
          Action – Open aic.gemini_list
          ===================================================== -->
 
@@ -132,25 +112,6 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         aic.api_key_list – Search View
-         ===================================================== -->
-
-    <record id="aic_api_key_list_view_search" model="ir.ui.view">
-        <field name="name">aic.api_key_list.search</field>
-        <field name="model">aic.api_key_list</field>
-        <field name="arch" type="xml">
-            <search string="AI Chat Admin">
-                <field name="aic_api_key_list_id"/>
-                <filter name="filter_active"
-                        string="Active"
-                        domain="[('active', '=', True)]"/>
-                <filter name="filter_inactive"
-                        string="Inactive"
-                        domain="[('active', '=', False)]"/>
-            </search>
-        </field>
-    </record>
 
     <!-- =====================================================
          Action – Open aic.api_key_list

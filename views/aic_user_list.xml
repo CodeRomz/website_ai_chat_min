@@ -55,25 +55,6 @@
         </field>
     </record>
 
-    <!-- =====================================================
-         aic.user – Search View
-         ===================================================== -->
-
-    <record id="aic_user_view_search" model="ir.ui.view">
-        <field name="name">aic.user.search</field>
-        <field name="model">aic.user</field>
-        <field name="arch" type="xml">
-            <search string="AI Chat Admin">
-                <field name="aic_user_id"/>
-                <filter name="filter_active"
-                        string="Active"
-                        domain="[('active', '=', True)]"/>
-                <filter name="filter_inactive"
-                        string="Inactive"
-                        domain="[('active', '=', False)]"/>
-            </search>
-        </field>
-    </record>
 
     <!-- =====================================================
          Action – Open aic.user
