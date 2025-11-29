@@ -36,6 +36,13 @@ class AicApiKeyList(models.Model):
         help="API key for the selected provider.\nKeep secret.",
     )
 
+    file_store_ids = fields.One2many(
+        "aic.file_store_id",
+        "api_key_id",
+        string="File Store IDs",
+        help="File Store IDs linked to this API key for Gemini File Search.",
+    )
+
     _sql_constraints = [
         (
             "aic_api_key_list_unique",
@@ -97,6 +104,14 @@ class AicFileStoreId(models.Model):
         required=True,
         size=256,
         help="File Store ID from Gemini (e.g. the FileSearchStore/FirenorQMS-9823u93jfjfenro).",
+    )
+
+    api_key_id = fields.Many2one(
+        "aic.api_key_list",
+        string="API Key",
+        required=True,
+        ondelete="restrict",
+        help="API key that owns this File Store ID.",
     )
 
     _sql_constraints = [

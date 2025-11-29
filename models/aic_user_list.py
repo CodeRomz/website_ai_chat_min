@@ -60,15 +60,12 @@ class AicUser(models.Model):
     )
 
     aic_file_store_ids = fields.Many2many(
-        comodel_name="aic.file_store_id",
-        relation="aic_user_file_store_rel",
-        column1="aic_user_id",
-        column2="file_store_id",
+        "aic.file_store_id",
+        "aic_user_file_store_rel",
+        "user_id",
+        "file_store_id",
         string="File Store IDs",
-        help=(
-            "File Store IDs (Gemini FileSearchStore) this user can use when "
-            "searching over documents."
-        ),
+        help="File Stores this user can use (must belong to the selected API Key).",
     )
 
     _sql_constraints = [
