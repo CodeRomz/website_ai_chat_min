@@ -84,13 +84,19 @@ class AicFileStoreId(models.Model):
     _name = "aic.file_store_id"
     _inherit = ["mail.activity.mixin", "mail.thread"]
     _description = "List of File Store IDs"
-    _rec_name = "file_store_id"
+
+    name = fields.Char(
+        string="Identifier",
+        required=True,
+        tracking=True,
+        help="File Store ID Friendly name (e.g. 'FirenorQMS').",
+    )
 
     file_store_id = fields.Char(
         string="File Store ID",
         required=True,
         size=256,
-        help="File Store ID from Gemini (e.g. the FileSearchStore identifier).",
+        help="File Store ID from Gemini (e.g. the FileSearchStore/FirenorQMS-9823u93jfjfenro).",
     )
 
     _sql_constraints = [
@@ -98,35 +104,6 @@ class AicFileStoreId(models.Model):
             "aic_file_store_id_unique",
             "unique(file_store_id)",
             "Each File Store ID must be unique in the list.",
-        ),
-    ]
-
-
-class AicFileStoreIdGroup(models.Model):
-    """
-    Master data: group identifiers for File Store IDs.
-    """
-
-    _name = "aic.file_store_id_group"
-    _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of File Store ID Groups"
-    _rec_name = "file_store_id_group"
-
-    file_store_id_group = fields.Char(
-        string="File Store ID Group",
-        required=True,
-        size=256,
-        help=(
-            "File Store ID Group helps identify FileSearchStore "
-            "(e.g. FNO-QMS, FNI-Project, MM-BDD)."
-        ),
-    )
-
-    _sql_constraints = [
-        (
-            "aic_file_store_id_group_unique",
-            "unique(file_store_id_group)",
-            "Each File Store ID Group must be unique in the list.",
         ),
     ]
 

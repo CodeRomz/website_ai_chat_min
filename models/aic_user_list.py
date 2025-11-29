@@ -61,7 +61,7 @@ class AicUser(models.Model):
 
     aic_file_store_ids = fields.Many2many(
         comodel_name="aic.file_store_id",
-        relation="aic_user_file_store_rel",   # unique relation name to avoid conflicts
+        relation="aic_user_file_store_rel",
         column1="aic_user_id",
         column2="file_store_id",
         string="File Store IDs",

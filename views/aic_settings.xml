@@ -135,6 +135,7 @@
             <form string="File Store ID">
                 <sheet>
                     <group>
+                        <field name="name" required="1"/>
                         <field name="file_store_id" required="1"/>
                     </group>
                 </sheet>
@@ -155,6 +156,7 @@
         <field name="model">aic.file_store_id</field>
         <field name="arch" type="xml">
             <tree string="File Store IDs">
+                <field name="name"/>
                 <field name="file_store_id"/>
             </tree>
         </field>
@@ -183,64 +185,6 @@
               sequence="30"
               groups="group_ai_chat_admin"/>
 
-    <!-- =====================================================
-         aic.file_store_id_group – Form View
-         ===================================================== -->
-
-    <record id="aic_file_store_id_group_view_form" model="ir.ui.view">
-        <field name="name">aic.file_store_id_group.form</field>
-        <field name="model">aic.file_store_id_group</field>
-        <field name="arch" type="xml">
-            <form string="File Store Group">
-                <sheet>
-                    <group>
-                        <field name="file_store_id_group" required="1"/>
-                    </group>
-                </sheet>
-
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
-            </form>
-        </field>
-    </record>
-
-    <!-- aic.file_store_id_group – Tree View -->
-
-    <record id="aic_file_store_id_group_view_tree" model="ir.ui.view">
-        <field name="name">aic.file_store_id_group.tree</field>
-        <field name="model">aic.file_store_id_group</field>
-        <field name="arch" type="xml">
-            <tree string="File Store ID Groups">
-                <field name="file_store_id_group"/>
-            </tree>
-        </field>
-    </record>
-
-    <!-- Action – aic.file_store_id_group -->
-
-    <record id="aic_file_store_id_group_action" model="ir.actions.act_window">
-        <field name="name">File Store ID Groups</field>
-        <field name="res_model">aic.file_store_id_group</field>
-        <field name="view_mode">tree,form</field>
-        <field name="view_id" ref="aic_file_store_id_group_view_tree"/>
-        <field name="help" type="html">
-            <p>
-                Maintain groups of File Store IDs (e.g. QMS, Projects, BDD).
-            </p>
-        </field>
-    </record>
-
-    <!-- Menu – aic.file_store_id_group -->
-
-    <menuitem id="aic_menu_file_store_id_group"
-              name="File Store Groups"
-              parent="aic_menu_configuration"
-              action="aic_file_store_id_group_action"
-              sequence="40"
-              groups="group_ai_chat_admin"/>
 
     <!-- =====================================================
          aic.gemini_system_instruction – Form / Tree
