@@ -26,35 +26,6 @@ GEMINI_SAFETY_SELECTION = [
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    # ---------------------------------------------------------------------
-    # Core provider/model/auth
-    # ---------------------------------------------------------------------
-    ai_api_key = fields.Char(
-        string="API Key",
-        config_parameter="website_ai_chat_min.ai_api_key",
-        help="API key for the selected provider.\nKeep secret.",
-        size=512,
-    )
-
-    # ---------------------------------------------------------------------
-    # Misc
-    # ---------------------------------------------------------------------
-    privacy_url = fields.Char(
-        string="Privacy Policy URL",
-        config_parameter="website_ai_chat_min.privacy_url",
-        help="Optional URL to your privacy policy displayed in the chat UI.",
-        size=1024,
-    )
-
-    # ---------------------------------------------------------------------
-    # Gemini File Search
-    # ---------------------------------------------------------------------
-    file_store_id = fields.Char(
-        string="File Store ID",
-        config_parameter="website_ai_chat_min.file_store_id",
-        help="File Store ID from Gemini (e.g. the FileSearchStore identifier).",
-        size=256,
-    )
 
     # ---------------------------------------------------------------------
     # Gemini Generation Behaviour (GenerateContentConfig)
@@ -94,19 +65,6 @@ class ResConfigSettings(models.TransientModel):
         default=1,
         config_parameter="website_ai_chat_min.gemini_candidate_count",
         help="Number of candidate completions to generate. 1 is recommended for production.",
-    )
-
-    # ---------------------------------------------------------------------
-    # Gemini Global Instruction & Public Description
-    # ---------------------------------------------------------------------
-    aic_gemini_system_instruction = fields.Char(
-        string="Gemini System Instruction",
-        config_parameter="website_ai_chat_min.gemini_system_instruction",
-        help=(
-            "Optional global system instruction (persona, behaviour, constraints) "
-            "sent as system_instruction to Gemini in GenerateContentConfig."
-        ),
-        size=4096,  # allow a long persona string
     )
 
     # ---------------------------------------------------------------------

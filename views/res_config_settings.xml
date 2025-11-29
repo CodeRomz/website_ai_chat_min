@@ -11,50 +11,7 @@
        help="Configure Gemini-based AI chat behaviour for this website."
        groups="base.group_system,website_ai_chat_min.group_ai_chat_admin">
 
-    <!-- Row 1: API key + File Store ID (standard 2-column layout) -->
-    <setting string="Gemini API Key"
-             help="Stored in system parameters; users without technical rights should not see this value.">
-        <field name="ai_api_key" password="True"/>
-    </setting>
-
-    <setting string="File Store ID"
-             help="File Store ID from Gemini for retrieval-augmented responses or knowledge base.">
-        <field name="file_store_id"/>
-    </setting>
-
-    <!-- Row 2: FULL-WIDTH System Instruction (+ Privacy URL) -->
-    <!-- This is plain HTML inside the block; it bypasses the 2-column <setting> grid -->
-    <div class="row mt16 o_settings_container" id="website_ai_gemini_system_instruction_row">
-        <div class="col-12 o_setting_box">
-            <div class="o_setting_right_pane">
-                <label for="aic_gemini_system_instruction" class="o_light_label">
-                    Gemini System Instruction
-                </label>
-                <div class="text-muted">
-                    Global persona/behaviour text sent as <code>system_instruction</code> to Gemini.
-                    Not stored as a system parameter; do not use it for secrets.
-                </div>
-
-                <div class="content-group mt16">
-                    <field name="aic_gemini_system_instruction" widget="text"/>
-                </div>
-
-                <div class="mt16">
-                    <label for="privacy_url" class="o_light_label">
-                        Privacy Policy URL
-                    </label>
-                    <div class="text-muted">
-                        Optional link displayed below the chat box for legal compliance (GDPR, etc.).
-                    </div>
-                    <field name="privacy_url"
-                           placeholder="https://example.com/privacy"
-                           class="w-100"/>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Row 3: Generation behaviour (standard 2-column setting, but grouped nicely) -->
+    <!-- Row 1: Generation behaviour (standard 2-column setting, but grouped nicely) -->
     <setting string="Generation behaviour"
              help="Tune randomness and sampling parameters controlling Gemini’s responses.">
         <div class="content-group mt16">
