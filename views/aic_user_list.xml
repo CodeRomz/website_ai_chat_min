@@ -14,13 +14,14 @@
                         <field name="aic_user_id"
                                required="1"
                                options="{'no_create_edit': True, 'no_create': True}"/>
-                        <field name="aic_api_key" required="1"/>
-                    </group>
 
-                    <field name="aic_file_store_ids"
+                        <field name="aic_api_key" required="1"/>
+
+                        <field name="aic_file_store_ids"
                            widget="many2many_tags"
                            options="{'no_create_edit': True}"/>
 
+                    </group>
                     <notebook>
                         <page string="Model List and Limits">
                             <field name="aic_line_ids">
