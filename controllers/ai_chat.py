@@ -45,7 +45,7 @@ class AiChatController(http.Controller):
 
         Access is controlled purely by the presence of an active aic.user
         configuration record for the logged-in res.users. This aligns the
-        controller with the new aic.user_list / aic_settings structure.
+        controller with the aic.user / aic_settings structure.
         """
         user = request.env.user
         if not user or not user.id:
@@ -67,29 +67,24 @@ class AiChatController(http.Controller):
 
         return aic_user_rec or None
 
-    def _get_ai_config(self):
-        """Legacy global AI config from ``ir.config_parameter``.
+    def _normalize_file_store_ids(self, file_store_ids):
+        """Return a deduplicated, cleaned list of File Store IDs."""
+        if isinstance(file_store_ids, (str, bytes)):
+            stores = [file_store_ids]
+        elif isinstance(file_store_ids, (list, tuple, set)):
+            stores = list(file_store_ids)
+        else:
+            stores = []
 
-        This is kept only as a fallback. The canonical configuration for
-        API keys and File Stores now lives in:
-
-          * aic.api_key_list
-          * aic.file_store_id
-          * aic.user (aic_api_key + aic_file_store_ids)
-        """
-        api_key = ""
-        file_store_id = ""
-        try:
-            icp = request.env["ir.config_parameter"].sudo()
-            api_key = icp.get_param("website_ai_chat_min.ai_api_key") or ""
-            file_store_id = icp.get_param("website_ai_chat_min.file_store_id") or ""
-        except Exception as exc:
-            _logger.exception("AI Chat: error while reading legacy AI config: %s", exc)
-        finally:
-            return {
-                "api_key": api_key,
-                "file_store_id": file_store_id,
-            }
+        cleaned = []
+        seen = set()
+        for fs in stores:
+            fs_clean = tools.ustr(fs or "").strip()
+            if not fs_clean or fs_clean in seen:
+                continue
+            seen.add(fs_clean)
+            cleaned.append(fs_clean)
+        return cleaned
 
     def _get_ai_credentials_for_user(self, aic_user_rec):
         """Resolve API key and File Store IDs for this ``aic.user``.
@@ -132,30 +127,9 @@ class AiChatController(http.Controller):
                     exc,
                 )
 
-        # Fallback to legacy global config if needed
-        if not api_key or not file_store_ids:
-            legacy = self._get_ai_config()
-            if not api_key:
-                api_key = tools.ustr(legacy.get("api_key") or "").strip()
-            legacy_store = tools.ustr(legacy.get("file_store_id") or "").strip()
-            if legacy_store and not file_store_ids:
-                file_store_ids.append(legacy_store)
-
-        # Deduplicate & clean
-        cleaned_stores = []
-        seen = set()
-        for fs in file_store_ids:
-            fs_clean = tools.ustr(fs or "").strip()
-            if not fs_clean:
-                continue
-            if fs_clean in seen:
-                continue
-            seen.add(fs_clean)
-            cleaned_stores.append(fs_clean)
-
         return {
             "api_key": api_key,
-            "file_store_ids": cleaned_stores,
+            "file_store_ids": file_store_ids,
         }
 
     # -------------------------------------------------------------------------
@@ -280,6 +254,7 @@ class AiChatController(http.Controller):
             if not user or not getattr(user, "id", False):
                 return result
 
+            # If the UI requested a specific model, try to resolve limits for it
             if requested_model_name:
                 try:
                     limits = (
@@ -302,6 +277,7 @@ class AiChatController(http.Controller):
                     prompt_limit = limits.get("prompt_limit")
                     tokens_per_prompt = limits.get("tokens_per_prompt")
 
+            # Fallback to the first active model if nothing resolved
             if not effective_model:
                 line = (
                     aic_user_rec.sudo()
@@ -489,7 +465,7 @@ class AiChatController(http.Controller):
             # Legacy text parameter fallback for backward compatibility
             if not system_instruction_text:
                 legacy_text = (
-                        icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
+                    icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
                 )
                 system_instruction_text = tools.ustr(legacy_text).strip()
         except Exception as exc:
@@ -521,7 +497,14 @@ class AiChatController(http.Controller):
     # Internal helpers – Gemini call
     # -------------------------------------------------------------------------
 
-    def _call_gemini(self, api_key, file_store_ids, model_name, prompt, max_output_tokens):
+    def _call_gemini(
+        self,
+        api_key,
+        file_store_ids,
+        model_name,
+        prompt,
+        max_output_tokens,
+    ):
         """Call Google Generative AI (Gemini) with optional File Search tool.
 
         :param api_key:          Gemini API key
@@ -558,27 +541,12 @@ class AiChatController(http.Controller):
 
         tools_param = None
         try:
-            # Normalise file_store_ids -> list of unique non-empty strings
-            stores = []
-            if isinstance(file_store_ids, (str, bytes)):
-                stores = [file_store_ids]
-            elif isinstance(file_store_ids, (list, tuple, set)):
-                stores = list(file_store_ids)
-
-            cleaned = []
-            seen = set()
-            for fs in stores:
-                fs_clean = tools.ustr(fs or "").strip()
-                if not fs_clean or fs_clean in seen:
-                    continue
-                seen.add(fs_clean)
-                cleaned.append(fs_clean)
-
-            if cleaned:
+            cleaned_stores = self._normalize_file_store_ids(file_store_ids)
+            if cleaned_stores:
                 tools_param = [
                     genai_types.Tool(
                         file_search=genai_types.FileSearch(
-                            file_search_store_names=cleaned
+                            file_search_store_names=cleaned_stores
                         )
                     )
                 ]
