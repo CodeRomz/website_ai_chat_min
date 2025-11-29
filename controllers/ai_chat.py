@@ -456,10 +456,12 @@ class AiChatController(http.Controller):
         candidate_count = _int_param("website_ai_chat_min.gemini_candidate_count", 1)
         safety_settings = self._build_gemini_safety_settings(icp)
 
-        # System instruction: prefer ID-based config using aic.gemini_system_instruction,
-        # but keep a legacy text-based parameter for backward compatibility.
+        # ------------------------------------------------------------------
+        # System instruction from aic.gemini_system_instruction
+        # ------------------------------------------------------------------
         system_instruction_text = ""
         try:
+            # New path: ID of aic.gemini_system_instruction chosen in settings
             instr_id_raw = icp.get_param(
                 "website_ai_chat_min.gemini_system_instruction_id"
             )
@@ -484,9 +486,10 @@ class AiChatController(http.Controller):
                         instr_id_raw,
                     )
 
+            # Legacy text parameter fallback for backward compatibility
             if not system_instruction_text:
                 legacy_text = (
-                    icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
+                        icp.get_param("website_ai_chat_min.gemini_system_instruction") or ""
                 )
                 system_instruction_text = tools.ustr(legacy_text).strip()
         except Exception as exc:
