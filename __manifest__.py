@@ -25,6 +25,7 @@
         "views/aic_main_menu.xml",
         "views/aic_user_list.xml",
         "views/aic_user_daily_usage.xml",
+        "views/aic_settings.xml",
     ],
 
     "assets": {

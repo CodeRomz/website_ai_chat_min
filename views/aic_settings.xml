@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- =====================================================
+     aic.gemini_list – Form View
+     ===================================================== -->
+
+    <record id="aic_gemini_list_view_form" model="ir.ui.view">
+        <field name="name">aic.gemini_list.form</field>
+        <field name="model">aic.gemini_list</field>
+        <field name="arch" type="xml">
+            <form string="API Key">
+                <sheet>
+                    <group>
+                        <field name="aic_gemini_model" required="1"/>
+                    </group>
+                </sheet>
+
+                <!-- chatter (mail.thread + mail.activity.mixin) -->
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.gemini_list – Tree View
+         ===================================================== -->
+
+    <record id="aic_gemini_list_view_tree" model="ir.ui.view">
+        <field name="name">aic.gemini_list.tree</field>
+        <field name="model">aic.gemini_list</field>
+        <field name="arch" type="xml">
+            <tree string="AI Chat Admin" decoration-muted="not active">
+                <field name="aic_gemini_model"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.gemini_list – Search View
+         ===================================================== -->
+
+    <record id="aic_gemini_list_view_search" model="ir.ui.view">
+        <field name="name">aic.gemini_list.search</field>
+        <field name="model">aic.gemini_list</field>
+        <field name="arch" type="xml">
+            <search string="Gemini List">
+                <field name="aic_gemini_model"/>
+                <filter name="filter_active"
+                        string="Active"
+                        domain="[('active', '=', True)]"/>
+                <filter name="filter_inactive"
+                        string="Inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         Action – Open aic.gemini_list
+         ===================================================== -->
+
+    <record id="aic_gemini_list_action" model="ir.actions.act_window">
+        <field name="name">Gemini Model List</field>
+        <field name="res_model">aic.gemini_list</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="aic_gemini_list_view_tree"/>
+        <field name="search_view_id" ref="aic_gemini_list_view_search"/>
+        <field name="help" type="html">
+            <p>
+                Configure Gemini Model.
+            </p>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.gemini_list – Menus
+         ===================================================== -->
+
+    <menuitem id="aic_menu_gemini_list"
+              name="Gemini Model List"
+              parent="aic_menu_configuration"
+              action="aic_gemini_list_action"
+              sequence="10"
+              groups="group_ai_chat_admin"/>
+
+
+    <!--#############################################################################################################-->
+
+
+    <!-- =====================================================
+         aic.api_key_list – Form View
+         ===================================================== -->
+
+    <record id="aic_api_key_list_view_form" model="ir.ui.view">
+        <field name="name">aic.api_key_list.form</field>
+        <field name="model">aic.api_key_list</field>
+        <field name="arch" type="xml">
+            <form string="API Key">
+                <sheet>
+                    <group>
+                        <field name="name" required="1"/>
+                        <field name="aic_api_key_list" required="1" password="True"/>
+                    </group>
+                </sheet>
+
+                <!-- chatter (mail.thread + mail.activity.mixin) -->
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.api_key_list – Tree View
+         ===================================================== -->
+
+    <record id="aic_api_key_list_view_tree" model="ir.ui.view">
+        <field name="name">aic.api_key_list.tree</field>
+        <field name="model">aic.api_key_list</field>
+        <field name="arch" type="xml">
+            <tree string="AI Chat Admin" decoration-muted="not active">
+                <field name="aic_api_key_list_id"/>
+                <field name="aic_line_ids" string="Gemini Model List" widget="many2many_tags"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.api_key_list – Search View
+         ===================================================== -->
+
+    <record id="aic_api_key_list_view_search" model="ir.ui.view">
+        <field name="name">aic.api_key_list.search</field>
+        <field name="model">aic.api_key_list</field>
+        <field name="arch" type="xml">
+            <search string="AI Chat Admin">
+                <field name="aic_api_key_list_id"/>
+                <filter name="filter_active"
+                        string="Active"
+                        domain="[('active', '=', True)]"/>
+                <filter name="filter_inactive"
+                        string="Inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         Action – Open aic.api_key_list
+         ===================================================== -->
+
+    <record id="aic_api_key_list_action" model="ir.actions.act_window">
+        <field name="name">API Key List</field>
+        <field name="res_model">aic.api_key_list</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="aic_api_key_list_view_tree"/>
+        <field name="search_view_id" ref="aic_api_key_list_view_search"/>
+        <field name="help" type="html">
+            <p>
+                Configure API Key.
+            </p>
+        </field>
+    </record>
+
+    <!-- =====================================================
+         aic.api_key_list – Menus
+         ===================================================== -->
+
+    <menuitem id="aic_menu_api_key_list"
+              name="Api Keys"
+              parent="aic_menu_configuration"
+              action="aic_api_key_list_action"
+              sequence="10"
+              groups="group_ai_chat_admin"/>
+
+</odoo>

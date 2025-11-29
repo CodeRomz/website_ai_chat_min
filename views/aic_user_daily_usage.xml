@@ -88,8 +88,8 @@
          ===================================================== -->
 
     <menuitem id="aic_menu_ai_daily_usage"
-              name="Daily Usage"
-              parent="aic_menu_ai_root"
+              name="User Daily Usage"
+              parent="aic_menu_reports"
               action="aic_user_daily_usage_action"
               sequence="20"
               groups="group_ai_chat_admin"/>

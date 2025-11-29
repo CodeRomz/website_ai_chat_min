@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
     <data>
-        <menuitem name="Ai Chat" id="aic_menu_ai_root" web_icon="website_ai_chat_min,static/src/img/chat_logo.png" groups="group_ai_chat_user"/>
+        <menuitem name="Ai Chat" id="aic_menu_root" web_icon="website_ai_chat_min,static/src/img/chat_logo.png" groups="group_ai_chat_user"/>
+
+        <menuitem name="Reports" sequence="50" id="aic_menu_reports" parent="aic_menu_root" groups="group_ai_chat_admin"/>
+
+        <menuitem name="Configuration" sequence="100" id="aic_menu_configuration" parent="aic_menu_root" groups="group_ai_chat_admin"/>
+
     </data>
 </odoo>

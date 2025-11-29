@@ -13,37 +13,6 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-class AicGeminiList(models.Model):
-    """
-    Master data: list of available Gemini model names.
-
-    Example records:
-        - aic_gemini_model = 'gemini-2.0-flash'
-        - aic_gemini_model = 'gemini-2.0-pro'
-    """
-
-    _name = "aic.gemini_list"
-    _inherit = ["mail.activity.mixin", "mail.thread"]
-    _description = "List of Gemini Models"
-    _rec_name = "aic_gemini_model"
-    _order = "aic_gemini_model"
-
-    aic_gemini_model = fields.Char(
-        string="Gemini Model",
-        required=True,
-        tracking=True,
-        help="Gemini model identifier (e.g. 'gemini-2.0-flash-lite').",
-    )
-
-    _sql_constraints = [
-        (
-            "aic_gemini_model_unique",
-            "unique(aic_gemini_model)",
-            "Each Gemini model must be unique in the list.",
-        ),
-    ]
-
-
 class AicUser(models.Model):
     """
     Per-user AI chat configuration.
@@ -73,6 +42,17 @@ class AicUser(models.Model):
         tracking=True,
         help="User who is allowed to use the AI chat with configured limits.",
     )
+
+    aic_api_key = fields.Many2one(
+        comodel_name="aic.api_key",
+        string="Api Key",
+        required=True,
+        ondelete="restrict",
+        tracking=True,
+        help="API key for the selected provider.\nKeep secret.",
+    )
+
+
 
     aic_line_ids = fields.One2many(
         comodel_name="aic.user_quota_line",
