@@ -33,7 +33,7 @@
         <field name="name">aic.gemini_list.tree</field>
         <field name="model">aic.gemini_list</field>
         <field name="arch" type="xml">
-            <tree string="AI Chat Admin" decoration-muted="not active">
+            <tree string="Gemini Model List">
                 <field name="aic_gemini_model"/>
             </tree>
         </field>
@@ -105,7 +105,7 @@
         <field name="name">aic.api_key_list.tree</field>
         <field name="model">aic.api_key_list</field>
         <field name="arch" type="xml">
-            <tree string="AI Chat Admin" decoration-muted="not active">
+            <tree string="API Key List">
                 <field name="aic_api_key_list_id"/>
                 <field name="aic_line_ids" string="Gemini Model List" widget="many2many_tags"/>
             </tree>
