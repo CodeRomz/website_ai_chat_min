@@ -48,7 +48,7 @@
         <field name="name">aic.user.tree</field>
         <field name="model">aic.user</field>
         <field name="arch" type="xml">
-            <tree string="AI Chat Admin" decoration-muted="not active">
+            <tree string="AI Chat Admin">
                 <field name="aic_user_id"/>
                 <field name="aic_line_ids" string="Gemini Model List" widget="many2many_tags"/>
             </tree>
