@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  // 45s is long enough for typical Gemini responses in production
+  // ~50s is long enough for typical Gemini responses in production
   // without letting the UI hang indefinitely.
   const AI_CHAT_TIMEOUT_MS = 50000;
 
@@ -460,12 +460,6 @@
   }
 
 
-  // Safely remove a loading message bubble if it is still attached.
-  function removeLoadingMessage(msgEl) {
-    if (msgEl && msgEl.parentNode) {
-      msgEl.parentNode.removeChild(msgEl);
-    }
-  }
 
   function rehydrateBodyFromState() {
     body.innerHTML = "";
