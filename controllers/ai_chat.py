@@ -757,7 +757,8 @@ class AiChatController(http.Controller):
             return {
                 "ok": False,
                 "reply": _(
-                    "AI backend is not configured. Please contact your administrator."
+                    "AI backend is not configured. "
+                    "Please contact your administrator."
                 ),
             }
 
@@ -784,25 +785,35 @@ class AiChatController(http.Controller):
                 "reply": _("The selected model is not configured for your user."),
             }
 
+        Usage = request.env["aic.user_daily_usage"].sudo()
+
         # ------------------------------------------------------------------
-        # Enforce daily quota (per aic.user + model + calendar date)
+        # Step 1: Enforce daily quota – check only, no increment yet.
+        #         Fail-closed: if usage check fails, block and log.
         # ------------------------------------------------------------------
-        allowed = True
+        usage_rec = None
         try:
-            Usage = request.env["aic.user_daily_usage"].sudo()
-            allowed, _usage_rec = Usage.check_and_increment_prompt(
+            allowed, usage_rec = Usage.check_prompt_allowed(
                 aic_user_rec=aic_user_rec,
                 aic_model=effective_model,
                 prompt_limit=prompt_limit,
             )
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - safety net
             _logger.exception(
-                "AI Chat: error while checking daily usage for aic.user %s: %s",
+                "AI Chat: usage check failed in /ai_chat/send "
+                "(user=%s, aic_user=%s, model=%s): %s",
+                getattr(user, "id", None),
                 getattr(aic_user_rec, "id", None),
+                effective_model,
                 exc,
             )
-            # Fail OPEN on quota calculation errors – better UX, errors are logged.
-            allowed = True
+            return {
+                "ok": False,
+                "reply": _(
+                    "Internal usage tracking error. Please try again later or "
+                    "contact your administrator."
+                ),
+            }
 
         if not allowed:
             return {
@@ -814,8 +825,11 @@ class AiChatController(http.Controller):
             }
 
         # ------------------------------------------------------------------
-        # Call Gemini
+        # Step 2: Call Gemini – only success + non-empty reply consumes quota.
         # ------------------------------------------------------------------
+        reply_text = ""
+        did_increment_quota = False
+
         try:
             reply_text = self._call_gemini(
                 api_key=api_key,
@@ -825,7 +839,15 @@ class AiChatController(http.Controller):
                 max_output_tokens=max_output_tokens,
             )
         except UserError as ue:
-            _logger.warning("AI Chat: user-facing error in /ai_chat/send: %s", ue)
+            # UserError carries a safe, user-facing message.
+            _logger.warning(
+                "AI Chat: user-facing error in /ai_chat/send "
+                "(user=%s, aic_user=%s, model=%s): %s",
+                getattr(user, "id", None),
+                getattr(aic_user_rec, "id", None),
+                effective_model,
+                ue,
+            )
             message = ue.name if hasattr(ue, "name") and ue.name else None
             if not message and ue.args:
                 message = tools.ustr(ue.args[0])
@@ -834,16 +856,69 @@ class AiChatController(http.Controller):
                 "reply": message or _("Error while calling the AI backend."),
             }
         except Exception as exc:  # pragma: no cover - safety net
-            _logger.exception("AI Chat: unexpected error while calling Gemini: %s", exc)
+            # Any unexpected exception is logged with traceback but not leaked.
+            _logger.exception(
+                "AI Chat: unexpected error while calling Gemini in "
+                "/ai_chat/send (user=%s, aic_user=%s, model=%s): %s",
+                getattr(user, "id", None),
+                getattr(aic_user_rec, "id", None),
+                effective_model,
+                exc,
+            )
             return {
                 "ok": False,
                 "reply": _("Unexpected error while calling the AI backend."),
             }
+        else:
+            # Only increment quota if Gemini returned a non-empty reply.
+            if reply_text:
+                try:
+                    updated_usage = Usage.increment_prompt_usage(
+                        aic_user_rec=aic_user_rec,
+                        aic_model=effective_model,
+                        prompt_limit=prompt_limit,
+                        usage_rec=usage_rec,
+                    )
+                    did_increment_quota = bool(updated_usage)
+                except Exception as exc:  # pragma: no cover - safety net
+                    # Quota increment failures must not break the user-facing
+                    # response. Log for later analysis.
+                    _logger.exception(
+                        "AI Chat: error while incrementing daily usage after "
+                        "successful Gemini call (user=%s, aic_user=%s, model=%s): %s",
+                        getattr(user, "id", None),
+                        getattr(aic_user_rec, "id", None),
+                        effective_model,
+                        exc,
+                    )
+                    did_increment_quota = False
+            else:
+                # Gemini returned an empty response; do not consume quota.
+                _logger.warning(
+                    "AI Chat: Gemini returned an empty response in /ai_chat/send "
+                    "(user=%s, aic_user=%s, model=%s); quota not incremented.",
+                    getattr(user, "id", None),
+                    getattr(aic_user_rec, "id", None),
+                    effective_model,
+                )
+        finally:
+            _logger.debug(
+                "AI Chat: /ai_chat/send completed Gemini call "
+                "(user=%s, aic_user=%s, model=%s, consumed=%s)",
+                getattr(user, "id", None),
+                getattr(aic_user_rec, "id", None),
+                effective_model,
+                did_increment_quota,
+            )
 
+        # Ensure a human-readable reply even if we did not increment quota.
         if not reply_text:
             reply_text = _("No answer was returned by the AI model.")
 
         return {
             "ok": True,
             "reply": reply_text,
+            # Frontend uses this to keep its counter aligned with the DB.
+            "consumed_prompt": did_increment_quota,
         }
+

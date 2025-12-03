@@ -672,7 +672,7 @@
 
       const raw = unwrap(data || {});
       if (ok && raw && raw.ok) {
-        // Backend currently returns {ok, reply}; treat as markdown content.
+        // Backend returns {ok, reply} and optionally {ui}.
         const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
         const answerText = uiObj.answer_md || raw.reply || "";
         const ui = {
@@ -680,12 +680,24 @@
           summary: uiObj.summary || "",
           answer_md: String(answerText || ""),
           citations: Array.isArray(uiObj.citations) ? uiObj.citations : [],
-          suggestions: Array.isArray(uiObj.suggestions) ? uiObj.suggestions.slice(0, 3) : [],
+          suggestions: Array.isArray(uiObj.suggestions)
+            ? uiObj.suggestions.slice(0, 3)
+            : [],
         };
         appendBotUI(ui);
         pushModelMessageToState(ui.answer_md);
-        // Front-end dynamic counter (backend remains authoritative for real quota)
-        incrementModelUsageForCurrentModel();
+
+        // Front-end dynamic counter (backend remains authoritative).
+        // Only increment when backend reports this prompt actually
+        // consumed quota. If flag is missing (older backend), fall back
+        // to previous behaviour and assume it did.
+        let consumed = true;
+        if (Object.prototype.hasOwnProperty.call(raw, "consumed_prompt")) {
+          consumed = !!raw.consumed_prompt;
+        }
+        if (consumed) {
+          incrementModelUsageForCurrentModel();
+        }
       } else {
         const fallback = (raw && raw.reply) || "Network error.";
         appendMessage("bot", fallback);
