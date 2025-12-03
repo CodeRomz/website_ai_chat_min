@@ -26,7 +26,13 @@
 
 /* Reduce motion (scoped) */
 @media (prefers-reduced-motion: reduce) {
-  .waicm .ai-chat-min__bubble { animation: none !important; transition: none !important; }
+  .waicm .ai-chat-min__bubble {
+    animation: none !important;
+    transition: none !important;
+  }
+  .waicm .aic-loading-dots span {
+    animation: none !important;
+  }
 }
 
 /* ---------- Wrapper (scoped) ---------- */
@@ -368,5 +374,50 @@
     width: auto;
     margin-left: 0;
     margin-top: 4px;
+  }
+}
+
+
+/* ---------- Loading / "thinking" indicator ---------- */
+.waicm .aic-chat-loading {
+  opacity: 0.85;
+}
+
+.waicm .aic-loading-text {
+  margin-right: 4px;
+  font-size: 0.8rem;
+  color: var(--ai-subtle);
+}
+
+.waicm .aic-loading-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.waicm .aic-loading-dots span {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ai-subtle);
+  animation: aic-loading-bounce 1s infinite ease-in-out;
+}
+
+/* Slight phase shift between dots */
+.waicm .aic-loading-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.waicm .aic-loading-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes aic-loading-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
   }
 }

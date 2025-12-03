@@ -1,6 +1,10 @@
 (() => {
   "use strict";
 
+  // 45s is long enough for typical Gemini responses in production
+  // without letting the UI hang indefinitely.
+  const AI_CHAT_TIMEOUT_MS = 50000;
+
   // Currently selected Gemini model (from selector)
   let selectedModelName = null;
 
@@ -11,7 +15,7 @@
 
   // Per-browser, per-user GLOBAL chat memory (shared across models)
   const WAICM_STORAGE_PREFIX = "waicm_chat_v1_";
-  const WAICM_MAX_HISTORY_MESSAGES = 6; // ~3 user/assistant exchanges
+  const WAICM_MAX_HISTORY_MESSAGES = 10; // ~3 user/assistant exchanges
   let chatState = null;
   let storageKey = null;
 
@@ -419,6 +423,50 @@
     body.scrollTop = body.scrollHeight;
   }
 
+    // Loading / "thinking" bubble appended while the AI is generating a reply.
+  // Visible "thinking" bubble while Gemini is generating a reply.
+  function appendLoadingMessage() {
+    const msg = document.createElement("div");
+    msg.className = "ai-chat-min__msg bot aic-chat-loading";
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "aic-loading-text";
+    textSpan.textContent = "Thinking";
+
+    const dotsSpan = document.createElement("span");
+    dotsSpan.className = "aic-loading-dots";
+
+    // Three animated dots
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement("span");
+      dot.textContent = ".";
+      dotsSpan.appendChild(dot);
+    }
+
+    msg.appendChild(textSpan);
+    msg.appendChild(dotsSpan);
+
+    body.appendChild(msg);
+    body.scrollTop = body.scrollHeight;
+
+    return msg;
+  }
+
+  // Safely remove a loading message bubble if it is still attached.
+  function removeLoadingMessage(msgEl) {
+    if (msgEl && msgEl.parentNode) {
+      msgEl.parentNode.removeChild(msgEl);
+    }
+  }
+
+
+  // Safely remove a loading message bubble if it is still attached.
+  function removeLoadingMessage(msgEl) {
+    if (msgEl && msgEl.parentNode) {
+      msgEl.parentNode.removeChild(msgEl);
+    }
+  }
+
   function rehydrateBodyFromState() {
     body.innerHTML = "";
     if (!chatState || !Array.isArray(chatState.messages)) {
@@ -644,11 +692,16 @@
     input.value = "";
     send.disabled = true;
 
+    // Show visible loading indicator while Gemini is "thinking"
+    const loadingEl = appendLoadingMessage();
+
     // Build limited-context prompt for Gemini
     const fullPrompt = buildPromptWithHistory(q);
     const payloadQuestion = fullPrompt || q;
 
     try {
+      const started = Date.now();
+
       const { ok, status, data } = await fetchJSON("/ai_chat/send", {
         method: "POST",
         body: {
@@ -660,11 +713,16 @@
             model_name: selectedModelName,
           },
         },
-        timeoutMs: 25000,
+        // More generous timeout for typical Gemini latency
+        timeoutMs: AI_CHAT_TIMEOUT_MS,
       });
+
+      const durationMs = Date.now() - started;
+      console.log("AI Chat: response in", durationMs, "ms");
 
       // If unauthorized (missing CSRF), hide UI gracefully
       if (!ok && (status === 401 || status === 403)) {
+        removeLoadingMessage(loadingEl);
         panel.hidden = true;
         bubble.style.display = "none";
         return;
@@ -673,6 +731,8 @@
       const raw = unwrap(data || {});
       if (ok && raw && raw.ok) {
         // Backend returns {ok, reply} and optionally {ui}.
+        removeLoadingMessage(loadingEl);
+
         const uiObj = (raw.ui && typeof raw.ui === "object") ? raw.ui : {};
         const answerText = uiObj.answer_md || raw.reply || "";
         const ui = {
@@ -699,17 +759,21 @@
           incrementModelUsageForCurrentModel();
         }
       } else {
+        // Backend error / non-ok response
+        removeLoadingMessage(loadingEl);
         const fallback = (raw && raw.reply) || "Network error.";
         appendMessage("bot", fallback);
         // Do not push error messages into state to keep context clean
       }
     } catch (e) {
       console.error("AI Chat: send failed", e);
+      removeLoadingMessage(loadingEl);
       appendMessage("bot", "Network error.");
     } finally {
       send.disabled = false;
     }
   }
+
 
   send.addEventListener("click", sendMsg);
   input.addEventListener("keydown", (e) => {
