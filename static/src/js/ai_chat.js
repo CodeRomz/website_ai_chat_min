@@ -1,6 +1,5 @@
 (() => {
   "use strict";
-
   // ~50s is long enough for typical Gemini responses in production
   // without letting the UI hang indefinitely.
   const AI_CHAT_TIMEOUT_MS = 50000;
