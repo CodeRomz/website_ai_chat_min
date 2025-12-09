@@ -15,7 +15,7 @@
 
   // Per-browser, per-user GLOBAL chat memory (shared across models)
   const WAICM_STORAGE_PREFIX = "waicm_chat_v1_";
-  const WAICM_MAX_HISTORY_MESSAGES = 10; // ~3 user/assistant exchanges
+  const WAICM_MAX_HISTORY_MESSAGES = 10; // ~5 user/assistant exchanges
   let chatState = null;
   let storageKey = null;
 
