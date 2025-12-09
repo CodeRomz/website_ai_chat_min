@@ -27,8 +27,7 @@ except Exception:  # pragma: no cover - library may not be installed everywhere
 
 
 class AiChatController(http.Controller):
-    """Website AI chat controller for website_ai_chat_min.
-
+    """
     JSON endpoints consumed by the website widget:
 
       * /ai_chat/can_load  – lightweight check if the widget should be shown.
