@@ -12,6 +12,7 @@ venv/
 ENV/
 env/
 .venv/
+.venv
 
 # macOS
 .DS_Store
@@ -83,3 +84,7 @@ secrets.env
 # System
 .idea/
 .vscode/
+AGENTS.md
+package-lock.json
+package.json
+node_modules
