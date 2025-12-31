@@ -594,9 +594,9 @@ class AiChatController(http.Controller):
             )
 
         try:
-            max_tokens = int(max_output_tokens) if max_output_tokens else 512
+            max_tokens = int(max_output_tokens) if max_output_tokens else 100000
         except (TypeError, ValueError):
-            max_tokens = 512
+            max_tokens = 100000
 
         tools_param = None
         if vertexai_enabled:
