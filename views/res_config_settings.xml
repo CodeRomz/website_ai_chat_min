@@ -75,6 +75,43 @@
                         </div>
                     </setting>
 
+                    <!-- Vertex AI -->
+                    <setting string="Vertex AI"
+                             help="Use Vertex AI with Google Cloud credentials instead of API keys.">
+                        <div class="content-group mt16">
+                            <div class="row">
+                                <div class="col-12 col-lg-6">
+                                    <field name="aic_vertexai_enabled"/>
+                                </div>
+                            </div>
+
+                            <div class="row mt16">
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_vertexai_project" class="o_light_label">
+                                        Vertex AI Project ID
+                                    </label>
+                                    <field name="aic_vertexai_project"/>
+                                </div>
+
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_vertexai_location" class="o_light_label">
+                                        Vertex AI Location
+                                    </label>
+                                    <field name="aic_vertexai_location"/>
+                                </div>
+                            </div>
+
+                            <div class="row mt16">
+                                <div class="col-12 col-lg-6">
+                                    <label for="aic_vertexai_api_version" class="o_light_label">
+                                        Vertex AI API Version
+                                    </label>
+                                    <field name="aic_vertexai_api_version"/>
+                                </div>
+                            </div>
+                        </div>
+                    </setting>
+
                     <!-- Row 2: Safety thresholds (grouped) -->
                     <setting string="Safety thresholds"
                              help="Configure Gemini content safety thresholds for harassment, hate, sexual, and dangerous content.">

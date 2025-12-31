@@ -66,7 +66,7 @@ class AiChatController(http.Controller):
         return aic_user_rec or None
 
     def _get_ai_credentials_for_user(self, aic_user_rec):
-        """Resolve API key and File Store IDs for this ``aic.user``.
+        """Resolve API key, File Store IDs, and global Vertex AI settings.
 
         Configuration is strictly per-user and comes from:
 
@@ -78,15 +78,49 @@ class AiChatController(http.Controller):
             {
                 "api_key": "<string or empty>",
                 "file_store_ids": ["store1", "store2", ...],
+                "vertexai_enabled": bool,
+                "vertexai_project": "<string or empty>",
+                "vertexai_location": "<string or empty>",
+                "vertexai_api_version": "<string or empty>",
             }
         """
         api_key = ""
         file_store_ids = []
+        vertexai_enabled = False
+        vertexai_project = ""
+        vertexai_location = ""
+        vertexai_api_version = "v1"
+
+        icp = request.env["ir.config_parameter"].sudo()
+        try:
+            raw_enabled = icp.get_param("website_ai_chat_min.vertexai_enabled")
+            vertexai_enabled = str(raw_enabled).lower() in ("1", "true", "yes", "y")
+        except Exception:
+            vertexai_enabled = False
+
+        try:
+            vertexai_project = tools.ustr(
+                icp.get_param("website_ai_chat_min.vertexai_project") or ""
+            ).strip()
+            vertexai_location = tools.ustr(
+                icp.get_param("website_ai_chat_min.vertexai_location") or ""
+            ).strip()
+            vertexai_api_version = tools.ustr(
+                icp.get_param("website_ai_chat_min.vertexai_api_version") or "v1"
+            ).strip() or "v1"
+        except Exception:
+            vertexai_project = ""
+            vertexai_location = ""
+            vertexai_api_version = "v1"
 
         if not aic_user_rec or not getattr(aic_user_rec, "id", False):
             return {
                 "api_key": api_key,
                 "file_store_ids": file_store_ids,
+                "vertexai_enabled": vertexai_enabled,
+                "vertexai_project": vertexai_project,
+                "vertexai_location": vertexai_location,
+                "vertexai_api_version": vertexai_api_version,
             }
 
         try:
@@ -112,6 +146,10 @@ class AiChatController(http.Controller):
         return {
             "api_key": api_key,
             "file_store_ids": file_store_ids,
+            "vertexai_enabled": vertexai_enabled,
+            "vertexai_project": vertexai_project,
+            "vertexai_location": vertexai_location,
+            "vertexai_api_version": vertexai_api_version,
         }
 
     def _normalize_file_store_ids(self, file_store_ids):
@@ -503,6 +541,10 @@ class AiChatController(http.Controller):
         model_name,
         prompt,
         max_output_tokens,
+        vertexai_enabled=False,
+        vertexai_project=None,
+        vertexai_location=None,
+        vertexai_api_version=None,
     ):
         """Call Google Generative AI (Gemini) with optional File Search tool.
 
@@ -524,8 +566,26 @@ class AiChatController(http.Controller):
             )
 
         api_key = tools.ustr(api_key or "").strip()
+        vertexai_project = tools.ustr(vertexai_project or "").strip()
+        vertexai_location = tools.ustr(vertexai_location or "").strip()
+        vertexai_api_version = tools.ustr(vertexai_api_version or "v1").strip() or "v1"
         model_name = tools.ustr(model_name or "").strip()
-        if not api_key or not model_name:
+        if not model_name:
+            raise UserError(
+                _(
+                    "AI backend is not fully configured. Please make sure the "
+                    "model is correctly set."
+                )
+            )
+        if vertexai_enabled:
+            if not vertexai_project or not vertexai_location:
+                raise UserError(
+                    _(
+                        "Vertex AI is enabled but project or location is missing. "
+                        "Please contact your administrator."
+                    )
+                )
+        elif not api_key:
             raise UserError(
                 _(
                     "AI backend is not fully configured. Please make sure the "
@@ -539,20 +599,26 @@ class AiChatController(http.Controller):
             max_tokens = 512
 
         tools_param = None
-        try:
-            cleaned_stores = self._normalize_file_store_ids(file_store_ids)
-            if cleaned_stores:
-                tools_param = [
-                    genai_types.Tool(
-                        file_search=genai_types.FileSearch(
-                            file_search_store_names=cleaned_stores
+        if vertexai_enabled:
+            if file_store_ids:
+                _logger.warning(
+                    "AI Chat: File Search is disabled for Vertex AI calls."
+                )
+        else:
+            try:
+                cleaned_stores = self._normalize_file_store_ids(file_store_ids)
+                if cleaned_stores:
+                    tools_param = [
+                        genai_types.Tool(
+                            file_search=genai_types.FileSearch(
+                                file_search_store_names=cleaned_stores
+                            )
                         )
-                    )
-                ]
-        except Exception as exc:
-            _logger.exception(
-                "AI Chat: error while building File Search tool config: %s", exc
-            )
+                    ]
+            except Exception as exc:
+                _logger.exception(
+                    "AI Chat: error while building File Search tool config: %s", exc
+                )
 
         generation_config = self._build_gemini_generation_config(
             max_output_tokens=max_tokens,
@@ -560,7 +626,17 @@ class AiChatController(http.Controller):
         )
 
         try:
-            client = genai.Client(api_key=api_key)
+            if vertexai_enabled:
+                client = genai.Client(
+                    vertexai=True,
+                    project=vertexai_project,
+                    location=vertexai_location,
+                    http_options=genai_types.HttpOptions(
+                        api_version=vertexai_api_version
+                    ),
+                )
+            else:
+                client = genai.Client(api_key=api_key)
         except Exception as exc:
             _logger.exception("AI Chat: error while initialising Gemini client: %s", exc)
             raise UserError(
@@ -630,7 +706,12 @@ class AiChatController(http.Controller):
             aic_user_rec = self._get_aic_user_for_current_user()
             if aic_user_rec and getattr(aic_user_rec, "id", False):
                 creds = self._get_ai_credentials_for_user(aic_user_rec)
-                if creds.get("api_key"):
+                has_vertex = (
+                    creds.get("vertexai_enabled")
+                    and creds.get("vertexai_project")
+                    and creds.get("vertexai_location")
+                )
+                if creds.get("api_key") or has_vertex:
                     show = True
         except Exception as exc:
             _logger.exception("AI Chat: error in /ai_chat/can_load: %s", exc)
@@ -751,8 +832,14 @@ class AiChatController(http.Controller):
         credentials = self._get_ai_credentials_for_user(aic_user_rec)
         api_key = credentials.get("api_key") or ""
         file_store_ids = credentials.get("file_store_ids") or []
+        vertexai_enabled = bool(credentials.get("vertexai_enabled"))
+        vertexai_project = credentials.get("vertexai_project") or ""
+        vertexai_location = credentials.get("vertexai_location") or ""
+        vertexai_api_version = credentials.get("vertexai_api_version") or "v1"
 
-        if not api_key:
+        if not api_key and not (
+            vertexai_enabled and vertexai_project and vertexai_location
+        ):
             return {
                 "ok": False,
                 "reply": _(
@@ -836,6 +923,10 @@ class AiChatController(http.Controller):
                 model_name=effective_model,
                 prompt=q,
                 max_output_tokens=max_output_tokens,
+                vertexai_enabled=vertexai_enabled,
+                vertexai_project=vertexai_project,
+                vertexai_location=vertexai_location,
+                vertexai_api_version=vertexai_api_version,
             )
         except UserError as ue:
             # UserError carries a safe, user-facing message.

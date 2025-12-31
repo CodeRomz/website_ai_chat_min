@@ -19,6 +19,34 @@ class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
     # -------------------------------------------------------------------------
+    # Vertex AI (global)
+    # -------------------------------------------------------------------------
+    aic_vertexai_enabled = fields.Boolean(
+        string="Enable Vertex AI",
+        config_parameter="website_ai_chat_min.vertexai_enabled",
+        help="Use Vertex AI instead of Gemini API keys.",
+    )
+
+    aic_vertexai_project = fields.Char(
+        string="Vertex AI Project ID",
+        config_parameter="website_ai_chat_min.vertexai_project",
+        help="Google Cloud project ID used for Vertex AI.",
+    )
+
+    aic_vertexai_location = fields.Char(
+        string="Vertex AI Location",
+        config_parameter="website_ai_chat_min.vertexai_location",
+        help="Region for Vertex AI, e.g. us-central1.",
+    )
+
+    aic_vertexai_api_version = fields.Char(
+        string="Vertex AI API Version",
+        default="v1",
+        config_parameter="website_ai_chat_min.vertexai_api_version",
+        help="API version for Vertex AI, default is v1.",
+    )
+
+    # -------------------------------------------------------------------------
     # Default Gemini system instruction / persona
     # -------------------------------------------------------------------------
     aic_gemini_system_instruction_id = fields.Many2one(
@@ -173,6 +201,23 @@ class ResConfigSettings(models.TransientModel):
                         value=rec.aic_gemini_candidate_count,
                     )
                 )
+
+    @api.constrains(
+        "aic_vertexai_enabled",
+        "aic_vertexai_project",
+        "aic_vertexai_location",
+    )
+    def _check_vertexai_config(self):
+        for rec in self:
+            if rec.aic_vertexai_enabled:
+                if not (rec.aic_vertexai_project or "").strip():
+                    raise ValidationError(
+                        _("Vertex AI is enabled but Project ID is missing.")
+                    )
+                if not (rec.aic_vertexai_location or "").strip():
+                    raise ValidationError(
+                        _("Vertex AI is enabled but Location is missing.")
+                    )
 
     # -------------------------------------------------------------------------
     # Persist Many2one via ir.config_parameter
